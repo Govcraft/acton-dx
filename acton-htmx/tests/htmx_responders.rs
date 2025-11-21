@@ -61,7 +61,10 @@ async fn test_trigger_after_swap() -> (HxTriggerAfterSwap, &'static str) {
 
 async fn test_trigger_with_details() -> (HxTrigger, &'static str) {
     let details = json!({"message": "Hello from server"});
-    (HxTrigger::detailed("detailedEvent", details), "content")
+    (
+        HxTrigger::new([("detailedEvent".to_string(), details)]),
+        "content",
+    )
 }
 
 async fn test_reswap() -> (HxReswap, &'static str) {
@@ -81,9 +84,20 @@ async fn test_location() -> (HxLocation, &'static str) {
 }
 
 async fn test_location_with_options() -> (HxLocation, &'static str) {
+    use axum_htmx::LocationOptions;
+
+    let options = LocationOptions {
+        source: None,
+        event: None,
+        target: None,
+        swap: None,
+        values: Some(json!({"message": "context"})),
+        headers: None,
+    };
+
     (
-        HxLocation::from_path_with_context("/location", json!({"message": "context"})),
-        "content"
+        HxLocation::from_uri_with_options("/location", options),
+        "content",
     )
 }
 
@@ -104,10 +118,7 @@ async fn test_hx_redirect_header() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::SEE_OTHER);
-    assert_eq!(
-        response.headers().get("HX-Redirect").unwrap(),
-        "/new-page"
-    );
+    assert_eq!(response.headers().get("HX-Redirect").unwrap(), "/new-page");
 }
 
 #[tokio::test]
@@ -278,10 +289,7 @@ async fn test_hx_reswap_header() {
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get("HX-Reswap").unwrap(),
-        "outerHTML"
-    );
+    assert_eq!(response.headers().get("HX-Reswap").unwrap(), "outerHTML");
 }
 
 #[tokio::test]

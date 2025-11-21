@@ -39,7 +39,8 @@ async fn extract_hx_boosted(HxBoosted(boosted): HxBoosted) -> String {
 async fn extract_hx_current_url(HxCurrentUrl(url): HxCurrentUrl) -> String {
     format!(
         "current_url={}",
-        url.map(|u| u.to_string()).unwrap_or_else(|| "none".to_string())
+        url.map(|u| u.to_string())
+            .unwrap_or_else(|| "none".to_string())
     )
 }
 
@@ -235,10 +236,7 @@ async fn test_hx_history_restore() {
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    assert_eq!(
-        String::from_utf8(body.to_vec()).unwrap(),
-        "is_restore=true"
-    );
+    assert_eq!(String::from_utf8(body.to_vec()).unwrap(), "is_restore=true");
 
     // Without header
     let response = app

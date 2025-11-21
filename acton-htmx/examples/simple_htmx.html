@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Simple HTMX Example</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <style>
+        body { font-family: system-ui; max-width: 600px; margin: 40px auto; }
+        button { background: #2563eb; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; margin: 4px; }
+        button:hover { background: #1d4ed8; }
+        #result { background: #dbeafe; padding: 1rem; margin-top: 1rem; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <h1>Simple HTMX Example</h1>
+    <p>acton-htmx with axum-htmx 0.8.1 corrected API</p>
+
+    <div id="result">Results appear here...</div>
+
+    <h2>Examples</h2>
+    <button hx-get="/partial" hx-target="#result">Load Partial</button>
+    <button hx-post="/redirect" hx-target="#result">Redirect</button>
+    <button hx-post="/trigger" hx-target="#result">Trigger Event</button>
+    <button hx-post="/refresh" hx-target="#result">Refresh Page</button>
+
+    <script>
+        document.body.addEventListener('myEvent', (e) => {
+            console.log('Event received:', e.detail);
+            alert('Event: ' + JSON.stringify(e.detail));
+        });
+    </script>
+</body>
+</html>

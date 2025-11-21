@@ -9,9 +9,7 @@
 //!
 //! Then visit http://127.0.0.1:3000 in your browser.
 
-use acton_htmx::{
-    config::ActonHtmxConfig, observability::ObservabilityConfig, state::ActonHtmxState,
-};
+use acton_htmx::{observability, state::ActonHtmxState};
 use axum::{
     extract::Path,
     response::Html,
@@ -19,8 +17,8 @@ use axum::{
     Router,
 };
 use axum_htmx::{
-    HxBoosted, HxCurrentUrl, HxLocation, HxPrompt, HxPushUrl, HxRedirect, HxRefresh, HxRequest,
-    HxReswap, HxRetarget, HxTarget, HxTrigger, HxTriggerAfterSettle, SwapOption,
+    HxBoosted, HxCurrentUrl, HxEvent, HxLocation, HxPrompt, HxPushUrl, HxRedirect, HxRefresh,
+    HxRequest, HxResponseTrigger, HxReswap, HxRetarget, HxTarget, SwapOption,
 };
 use serde_json::json;
 use tracing::{debug, info};
@@ -28,8 +26,7 @@ use tracing::{debug, info};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // Initialize observability
-    let observability = ObservabilityConfig::default();
-    observability.init()?;
+    observability::init()?;
 
     // Create application state
     let state = ActonHtmxState::new().await?;
@@ -225,36 +222,40 @@ async fn full_page() -> Html<&'static str> {
 }
 
 /// Demonstrates HxRedirect
-async fn redirect_example() -> HxRedirect {
+async fn redirect_example() -> (HxRedirect, Html<&'static str>) {
     info!("Redirecting via HX-Redirect");
-    HxRedirect::to("/")
+    (
+        HxRedirect::from("/"),
+        Html("<p>Redirecting...</p>"),
+    )
 }
 
-/// Demonstrates simple HxTrigger
-async fn trigger_event() -> (HxTrigger, Html<&'static str>) {
+/// Demonstrates simple HxResponseTrigger
+async fn trigger_event() -> (HxResponseTrigger, Html<&'static str>) {
     info!("Triggering myEvent");
     (
-        HxTrigger::normal(["myEvent"]),
+        HxResponseTrigger::normal(["myEvent"]),
         Html("<p>Event triggered! (check event log)</p>"),
     )
 }
 
-/// Demonstrates HxTrigger with data
-async fn trigger_with_data() -> (HxTrigger, Html<&'static str>) {
+/// Demonstrates HxResponseTrigger with data
+async fn trigger_with_data() -> (HxResponseTrigger, Html<&'static str>) {
     info!("Triggering dataEvent with payload");
     let data = json!({"message": "Hello from server", "timestamp": 1234567890});
+    let event = HxEvent::new_with_data("dataEvent", data).expect("valid JSON");
     (
-        HxTrigger::detailed("dataEvent", data),
+        HxResponseTrigger::normal([event]),
         Html("<p>Event with data triggered!</p>"),
     )
 }
 
 /// Demonstrates multiple triggers
-async fn multiple_triggers() -> (HxTrigger, HxTriggerAfterSettle, Html<&'static str>) {
+async fn multiple_triggers() -> (HxResponseTrigger, HxResponseTrigger, Html<&'static str>) {
     info!("Triggering multiple events");
     (
-        HxTrigger::normal(["event1", "event2"]),
-        HxTriggerAfterSettle::normal(["settleEvent"]),
+        HxResponseTrigger::normal(["event1", "event2"]),
+        HxResponseTrigger::after_settle(["settleEvent"]),
         Html("<p>Multiple events triggered! (check console)</p>"),
     )
 }
@@ -290,16 +291,21 @@ async fn retarget_example() -> (HxRetarget, Html<&'static str>) {
 }
 
 /// Demonstrates HxLocation
-async fn location_example() -> HxLocation {
-    info!("Navigating with context");
-    let context = json!({"message": "Navigation context", "id": 123});
-    HxLocation::from_path_with_context("/", context)
+async fn location_example() -> (HxLocation, Html<&'static str>) {
+    info!("Navigating with location");
+    (
+        HxLocation::from("/"),
+        Html("<p>Location header sent</p>"),
+    )
 }
 
 /// Demonstrates HxRefresh
-async fn refresh_example() -> HxRefresh {
+async fn refresh_example() -> (HxRefresh, Html<&'static str>) {
     info!("Triggering page refresh");
-    HxRefresh
+    (
+        HxRefresh::from(true),
+        Html("<p>Page will refresh</p>"),
+    )
 }
 
 /// Demonstrates HxBoosted extractor
@@ -343,12 +349,12 @@ async fn current_url_example(HxCurrentUrl(url): HxCurrentUrl) -> Html<String> {
 async fn delete_item(
     Path(id): Path<u32>,
     HxTarget(target): HxTarget,
-) -> (HxTrigger, Html<String>) {
+) -> (HxResponseTrigger, Html<String>) {
     info!("Deleting item {}", id);
     debug!("Target element: {:?}", target);
 
     (
-        HxTrigger::normal(["itemDeleted"]),
+        HxResponseTrigger::normal(["itemDeleted"]),
         Html(format!("<p>✓ Item {} deleted</p>", id)),
     )
 }
