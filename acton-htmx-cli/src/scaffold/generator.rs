@@ -19,7 +19,7 @@ use std::path::PathBuf;
 /// CRUD scaffold generator
 #[allow(dead_code)] // Fields will be used in Week 2-3 implementation
 pub struct ScaffoldGenerator {
-    /// Model name (e.g., "Post", "UserProfile")
+    /// Model name (e.g., "Post", "`UserProfile`")
     model_name: String,
     /// Field definitions
     fields: Vec<FieldDefinition>,
@@ -34,20 +34,25 @@ impl ScaffoldGenerator {
     ///
     /// # Arguments
     ///
-    /// * `model_name` - Name of the model (e.g., "Post", "UserProfile")
-    /// * `field_specs` - Field specifications (e.g., ["title:string", "content:text"])
+    /// * `model_name` - Name of the model (e.g., "Post", "`UserProfile`")
+    /// * `field_specs` - Field specifications (e.g., `["title:string", "content:text"]`)
     /// * `project_root` - Project root directory
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Model name is not `PascalCase` (doesn't start with uppercase)
+    /// - Field specifications cannot be parsed
+    /// - No fields are specified
+    /// - Template registry initialization fails
     pub fn new(
         model_name: String,
-        field_specs: Vec<String>,
+        field_specs: &[String],
         project_root: PathBuf,
     ) -> Result<Self> {
         // Validate model name
         if !model_name.chars().next().unwrap_or('0').is_uppercase() {
-            anyhow::bail!(
-                "Model name must be PascalCase (start with uppercase): '{}'",
-                model_name
-            );
+            anyhow::bail!("Model name must be PascalCase (start with uppercase): '{model_name}'");
         }
 
         // Parse field definitions
@@ -79,15 +84,19 @@ impl ScaffoldGenerator {
     /// 3. Form file (src/forms/{model}.rs)
     /// 4. Handler file (src/handlers/{model}s.rs) - coming soon
     /// 5. Template files (templates/{model}s/*.html) - coming soon
-    /// 6. Test file (tests/{model}s_test.rs) - coming soon
+    /// 6. Test file (`tests/{model}s_test.rs`) - coming soon
     /// 7. Updates to main.rs for route registration - coming soon
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if template rendering fails for any file
     pub fn generate(&self) -> Result<Vec<GeneratedFile>> {
-        let mut generated_files = Vec::new();
-
         // Generate model, migration, and form files
-        generated_files.push(self.generate_model()?);
-        generated_files.push(self.generate_migration()?);
-        generated_files.push(self.generate_forms()?);
+        let generated_files = vec![
+            self.generate_model()?,
+            self.generate_migration()?,
+            self.generate_forms()?,
+        ];
 
         // Handler & Template generation coming soon
         // generated_files.push(self.generate_handlers()?);
@@ -107,16 +116,10 @@ impl ScaffoldGenerator {
         let table_name = TemplateHelpers::to_table_name(&self.model_name);
         let model_snake = TemplateHelpers::to_snake_case(&self.model_name);
 
-        // Collect enum types
-        let mut enums = Vec::new();
-        for field in &self.fields {
-            if let FieldType::Enum { name, variants } = &field.field_type {
-                enums.push(serde_json::json!({
-                    "name": name,
-                    "variants": variants,
-                }));
-            }
-        }
+        let enums = self.collect_enums();
+        let (relations, foreign_keys) = self.collect_relations();
+        let (unique_fields, indexed_fields) = self.collect_indexes();
+        let fields = self.build_field_metadata();
 
         // Check for special field types
         let has_date_fields = self.fields.iter().any(|f| {
@@ -128,83 +131,6 @@ impl ScaffoldGenerator {
         let has_decimal = self.fields.iter().any(|f| matches!(f.field_type, FieldType::Decimal));
         let has_uuid = self.fields.iter().any(|f| matches!(f.field_type, FieldType::Uuid));
         let has_enum = !enums.is_empty();
-
-        // Collect relations
-        let mut relations = Vec::new();
-        let mut foreign_keys = Vec::new();
-        for field in &self.fields {
-            if let FieldType::Reference { model } = &field.field_type {
-                let referenced_table = TemplateHelpers::to_table_name(model);
-                let relation_name = TemplateHelpers::to_pascal_case(&field.name);
-                let field_column = TemplateHelpers::to_foreign_key(&field.name, model);
-
-                relations.push(serde_json::json!({
-                    "field_name": field.name,
-                    "relation_name": relation_name,
-                    "referenced_table": referenced_table,
-                    "field_column": field_column,
-                }));
-
-                foreign_keys.push(serde_json::json!({
-                    "field_name": field.name,
-                    "column_name": field_column,
-                    "referenced_table": referenced_table,
-                }));
-            }
-        }
-
-        // Collect unique and indexed fields
-        let unique_fields: Vec<_> = self
-            .fields
-            .iter()
-            .filter(|f| f.unique)
-            .map(|f| {
-                serde_json::json!({
-                    "name": f.name,
-                    "column_name": TemplateHelpers::to_snake_case(&f.name),
-                })
-            })
-            .collect();
-
-        let indexed_fields: Vec<_> = self
-            .fields
-            .iter()
-            .filter(|f| f.indexed && !f.unique) // Don't double-index unique fields
-            .map(|f| {
-                serde_json::json!({
-                    "name": f.name,
-                    "column_name": TemplateHelpers::to_snake_case(&f.name),
-                })
-            })
-            .collect();
-
-        // Build field metadata with additional info
-        let fields: Vec<_> = self
-            .fields
-            .iter()
-            .map(|f| {
-                let column_name = if let FieldType::Reference { model } = &f.field_type {
-                    TemplateHelpers::to_foreign_key(&f.name, model)
-                } else {
-                    TemplateHelpers::to_snake_case(&f.name)
-                };
-
-                let validations = self.get_validations(f);
-                let default_value = self.get_default_value(f);
-
-                serde_json::json!({
-                    "name": f.name,
-                    "column_name": column_name,
-                    "rust_type": f.rust_type(),
-                    "sql_type": f.sql_type(),
-                    "optional": f.optional,
-                    "unique": f.unique,
-                    "indexed": f.indexed,
-                    "validations": validations,
-                    "default_value": default_value,
-                })
-            })
-            .collect();
 
         serde_json::json!({
             "model_name": self.model_name,
@@ -227,8 +153,118 @@ impl ScaffoldGenerator {
         })
     }
 
+    /// Collect enum type definitions from fields
+    fn collect_enums(&self) -> Vec<serde_json::Value> {
+        use super::field_type::FieldType;
+
+        self.fields
+            .iter()
+            .filter_map(|field| {
+                if let FieldType::Enum { name, variants } = &field.field_type {
+                    Some(serde_json::json!({
+                        "name": name,
+                        "variants": variants,
+                    }))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    /// Collect relations and foreign key definitions
+    fn collect_relations(&self) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
+        use super::field_type::FieldType;
+
+        let mut relations = Vec::new();
+        let mut foreign_keys = Vec::new();
+
+        for field in &self.fields {
+            if let FieldType::Reference { model } = &field.field_type {
+                let referenced_table = TemplateHelpers::to_table_name(model);
+                let relation_name = TemplateHelpers::to_pascal_case(&field.name);
+                let field_column = TemplateHelpers::to_foreign_key(&field.name, model);
+
+                relations.push(serde_json::json!({
+                    "field_name": field.name,
+                    "relation_name": relation_name,
+                    "referenced_table": referenced_table,
+                    "field_column": field_column,
+                }));
+
+                foreign_keys.push(serde_json::json!({
+                    "field_name": field.name,
+                    "column_name": field_column,
+                    "referenced_table": referenced_table,
+                }));
+            }
+        }
+
+        (relations, foreign_keys)
+    }
+
+    /// Collect unique and indexed field definitions
+    fn collect_indexes(&self) -> (Vec<serde_json::Value>, Vec<serde_json::Value>) {
+        let unique_fields = self
+            .fields
+            .iter()
+            .filter(|f| f.unique)
+            .map(|f| {
+                serde_json::json!({
+                    "name": f.name,
+                    "column_name": TemplateHelpers::to_snake_case(&f.name),
+                })
+            })
+            .collect();
+
+        let indexed_fields = self
+            .fields
+            .iter()
+            .filter(|f| f.indexed && !f.unique)
+            .map(|f| {
+                serde_json::json!({
+                    "name": f.name,
+                    "column_name": TemplateHelpers::to_snake_case(&f.name),
+                })
+            })
+            .collect();
+
+        (unique_fields, indexed_fields)
+    }
+
+    /// Build field metadata with validation and default values
+    fn build_field_metadata(&self) -> Vec<serde_json::Value> {
+        use super::field_type::FieldType;
+
+        self.fields
+            .iter()
+            .map(|f| {
+                let column_name = if let FieldType::Reference { model } = &f.field_type {
+                    TemplateHelpers::to_foreign_key(&f.name, model)
+                } else {
+                    TemplateHelpers::to_snake_case(&f.name)
+                };
+
+                let validations = Self::get_validations(f);
+                let default_value = Self::get_default_value(f);
+
+                serde_json::json!({
+                    "name": f.name,
+                    "column_name": column_name,
+                    "rust_type": f.rust_type(),
+                    "sql_type": f.sql_type(),
+                    "optional": f.optional,
+                    "unique": f.unique,
+                    "indexed": f.indexed,
+                    "validations": validations,
+                    "default_value": default_value,
+                })
+            })
+            .collect()
+    }
+
     /// Get validation rules for a field
-    fn get_validations(&self, field: &FieldDefinition) -> Vec<String> {
+    fn get_validations(field: &FieldDefinition) -> Vec<String> {
         use super::field_type::FieldType;
 
         let mut validations = Vec::new();
@@ -252,16 +288,14 @@ impl ScaffoldGenerator {
     }
 
     /// Get default value for testing
-    fn get_default_value(&self, field: &FieldDefinition) -> String {
+    fn get_default_value(field: &FieldDefinition) -> String {
         use super::field_type::FieldType;
 
         match &field.field_type {
             FieldType::String | FieldType::Text => "\"test\".to_string()".to_string(),
-            FieldType::Integer => "0".to_string(),
-            FieldType::BigInt => "0".to_string(),
+            FieldType::Integer | FieldType::BigInt => "0".to_string(),
             FieldType::Boolean => "false".to_string(),
-            FieldType::Float => "0.0".to_string(),
-            FieldType::Double => "0.0".to_string(),
+            FieldType::Float | FieldType::Double => "0.0".to_string(),
             FieldType::Decimal => "rust_decimal::Decimal::ZERO".to_string(),
             FieldType::Date => "chrono::NaiveDate::from_ymd_opt(2025, 1, 1).unwrap()".to_string(),
             FieldType::DateTime => {
@@ -273,23 +307,25 @@ impl ScaffoldGenerator {
             FieldType::Reference { .. } => "1".to_string(),
             FieldType::Array { .. } => "vec![]".to_string(),
             FieldType::Enum { name, variants } => {
-                format!("{}::{}", name, variants.first().unwrap_or(&"Unknown".to_string()))
+                let variant = variants.first().map_or("Unknown", String::as_str);
+                format!("{name}::{variant}")
             }
         }
     }
 
-    /// Generate SeaORM model file
+    /// Generate `SeaORM` model file
     fn generate_model(&self) -> Result<GeneratedFile> {
         let metadata = self.model_metadata();
         let content = self.templates.render("model", &metadata)?;
 
         let model_snake = TemplateHelpers::to_snake_case(&self.model_name);
-        let path = PathBuf::from(format!("src/models/{}.rs", model_snake));
+        let path = PathBuf::from(format!("src/models/{model_snake}.rs"));
 
+        let model_name = &self.model_name;
         Ok(GeneratedFile {
             path,
             content,
-            description: format!("SeaORM model for {}", self.model_name),
+            description: format!("SeaORM model for {model_name}"),
         })
     }
 
@@ -300,12 +336,12 @@ impl ScaffoldGenerator {
 
         let table_name = TemplateHelpers::to_table_name(&self.model_name);
         let timestamp = chrono::Utc::now().format("%Y%m%d%H%M%S");
-        let path = PathBuf::from(format!("migrations/{}_{}.sql", timestamp, table_name));
+        let path = PathBuf::from(format!("migrations/{timestamp}_{table_name}.sql"));
 
         Ok(GeneratedFile {
             path,
             content,
-            description: format!("Database migration for {} table", table_name),
+            description: format!("Database migration for {table_name} table"),
         })
     }
 
@@ -315,12 +351,13 @@ impl ScaffoldGenerator {
         let content = self.templates.render("form", &metadata)?;
 
         let model_snake = TemplateHelpers::to_snake_case(&self.model_name);
-        let path = PathBuf::from(format!("src/forms/{}.rs", model_snake));
+        let path = PathBuf::from(format!("src/forms/{model_snake}.rs"));
 
+        let model_name = &self.model_name;
         Ok(GeneratedFile {
             path,
             content,
-            description: format!("Form validation for {}", self.model_name),
+            description: format!("Form validation for {model_name}"),
         })
     }
 }
@@ -344,9 +381,10 @@ mod tests {
     #[test]
     fn test_new_generator() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string(), "content:text".to_string()];
         let generator = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec!["title:string".to_string(), "content:text".to_string()],
+            &fields,
             temp_dir.path().to_path_buf(),
         );
 
@@ -359,9 +397,10 @@ mod tests {
     #[test]
     fn test_invalid_model_name() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string()];
         let result = ScaffoldGenerator::new(
             "post".to_string(), // lowercase - should fail
-            vec!["title:string".to_string()],
+            &fields,
             temp_dir.path().to_path_buf(),
         );
 
@@ -371,9 +410,10 @@ mod tests {
     #[test]
     fn test_no_fields() {
         let temp_dir = tempdir().unwrap();
+        let fields: Vec<String> = vec![]; // no fields - should fail
         let result = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec![], // no fields - should fail
+            &fields,
             temp_dir.path().to_path_buf(),
         );
 
@@ -383,9 +423,10 @@ mod tests {
     #[test]
     fn test_model_metadata() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string()];
         let generator = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec!["title:string".to_string()],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();
@@ -399,9 +440,10 @@ mod tests {
     #[test]
     fn test_generate_model() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string(), "content:text".to_string()];
         let generator = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec!["title:string".to_string(), "content:text".to_string()],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();
@@ -416,9 +458,10 @@ mod tests {
     #[test]
     fn test_generate_migration() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string(), "published:boolean".to_string()];
         let generator = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec!["title:string".to_string(), "published:boolean".to_string()],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();
@@ -433,9 +476,10 @@ mod tests {
     #[test]
     fn test_generate_forms() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string(), "age:integer:optional".to_string()];
         let generator = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec!["title:string".to_string(), "age:integer:optional".to_string()],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();
@@ -450,12 +494,13 @@ mod tests {
     #[test]
     fn test_generate_with_enum() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec![
+            "title:string".to_string(),
+            "status:enum:Draft,Published,Archived".to_string(),
+        ];
         let generator = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec![
-                "title:string".to_string(),
-                "status:enum:Draft,Published,Archived".to_string(),
-            ],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();
@@ -470,13 +515,14 @@ mod tests {
     #[test]
     fn test_generate_with_references() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec![
+            "content:text".to_string(),
+            "author:references:User".to_string(),
+            "post:references:Post".to_string(),
+        ];
         let generator = ScaffoldGenerator::new(
             "Comment".to_string(),
-            vec![
-                "content:text".to_string(),
-                "author:references:User".to_string(),
-                "post:references:Post".to_string(),
-            ],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();
@@ -493,12 +539,13 @@ mod tests {
     #[test]
     fn test_generate_with_unique_and_indexed() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec![
+            "email:string:unique".to_string(),
+            "username:string:indexed".to_string(),
+        ];
         let generator = ScaffoldGenerator::new(
             "User".to_string(),
-            vec![
-                "email:string:unique".to_string(),
-                "username:string:indexed".to_string(),
-            ],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();
@@ -515,14 +562,15 @@ mod tests {
     #[test]
     fn test_complete_generation() {
         let temp_dir = tempdir().unwrap();
+        let fields = vec![
+            "title:string:unique".to_string(),
+            "content:text".to_string(),
+            "published:boolean".to_string(),
+            "author:references:User".to_string(),
+        ];
         let generator = ScaffoldGenerator::new(
             "Post".to_string(),
-            vec![
-                "title:string:unique".to_string(),
-                "content:text".to_string(),
-                "published:boolean".to_string(),
-                "author:references:User".to_string(),
-            ],
+            &fields,
             temp_dir.path().to_path_buf(),
         )
         .unwrap();

@@ -50,9 +50,9 @@ enum Commands {
 enum ScaffoldCommands {
     /// Generate complete CRUD resource
     Crud {
-        /// Model name (PascalCase, e.g., Post, UserProfile)
+        /// Model name (`PascalCase`, e.g., `Post`, `UserProfile`)
         model: String,
-        /// Field definitions (e.g., title:string, author:references:User)
+        /// Field definitions (e.g., `title:string`, `author:references:User`)
         #[arg(required = true)]
         fields: Vec<String>,
     },

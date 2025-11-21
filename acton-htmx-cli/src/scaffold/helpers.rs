@@ -9,7 +9,7 @@ use inflector::Inflector;
 pub struct TemplateHelpers;
 
 impl TemplateHelpers {
-    /// Convert string to snake_case
+    /// Convert string to `snake_case`
     ///
     /// # Examples
     ///
@@ -23,7 +23,7 @@ impl TemplateHelpers {
         input.to_snake_case()
     }
 
-    /// Convert string to PascalCase
+    /// Convert string to `PascalCase`
     ///
     /// # Examples
     ///
@@ -105,7 +105,7 @@ impl TemplateHelpers {
         input.to_singular()
     }
 
-    /// Convert string to table name (snake_case plural)
+    /// Convert string to table name (`snake_case` plural)
     ///
     /// # Examples
     ///
@@ -120,7 +120,7 @@ impl TemplateHelpers {
         Self::pluralize(&Self::to_snake_case(model))
     }
 
-    /// Convert string to module name (snake_case singular)
+    /// Convert string to module name (`snake_case` singular)
     ///
     /// # Examples
     ///

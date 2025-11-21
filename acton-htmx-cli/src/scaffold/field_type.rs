@@ -55,7 +55,7 @@ use std::fmt;
 /// Represents a field definition parsed from user input
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldDefinition {
-    /// Field name (e.g., "title", "published_at")
+    /// Field name (e.g., "title", "`published_at`")
     pub name: String,
     /// Field type
     pub field_type: FieldType,
@@ -88,7 +88,7 @@ pub enum FieldType {
     Decimal,
     /// Date (no time)
     Date,
-    /// DateTime (no timezone)
+    /// `DateTime` (no timezone)
     DateTime,
     /// Timestamp (with timezone)
     Timestamp,
@@ -134,13 +134,21 @@ impl FieldDefinition {
     /// assert!(field.unique);
     /// assert!(field.indexed);
     /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - Field definition has fewer than 2 parts (missing name or type)
+    /// - Field name is empty or not a valid Rust identifier
+    /// - Field type is unknown or malformed
+    /// - Enum type has no variants or invalid variant names
+    /// - Unknown modifier is specified
     pub fn parse(input: &str) -> Result<Self> {
         let parts: Vec<&str> = input.split(':').collect();
 
         if parts.len() < 2 {
             return Err(anyhow!(
-                "Invalid field definition: '{}'. Expected format: name:type[:modifiers]",
-                input
+                "Invalid field definition: '{input}'. Expected format: name:type[:modifiers]"
             ));
         }
 
@@ -154,8 +162,7 @@ impl FieldDefinition {
             || !name.chars().all(|c| c.is_alphanumeric() || c == '_')
         {
             return Err(anyhow!(
-                "Invalid field name: '{}'. Must be a valid Rust identifier (alphanumeric + underscore)",
-                name
+                "Invalid field name: '{name}'. Must be a valid Rust identifier (alphanumeric + underscore)"
             ));
         }
 
@@ -186,8 +193,7 @@ impl FieldDefinition {
                 "indexed" | "index" => indexed = true,
                 unknown => {
                     return Err(anyhow!(
-                        "Unknown modifier: '{}'. Valid modifiers: optional, unique, indexed",
-                        unknown
+                        "Unknown modifier: '{unknown}'. Valid modifiers: optional, unique, indexed"
                     ));
                 }
             }
@@ -229,11 +235,10 @@ impl FieldDefinition {
             // Validate variant names
             for variant in &variants {
                 if !variant.chars().next().unwrap_or('0').is_uppercase()
-                    || !variant.chars().all(|c| c.is_alphanumeric())
+                    || !variant.chars().all(char::is_alphanumeric)
                 {
                     return Err(anyhow!(
-                        "Invalid enum variant: '{}'. Must be PascalCase alphanumeric",
-                        variant
+                        "Invalid enum variant: '{variant}'. Must be PascalCase alphanumeric"
                     ));
                 }
             }
@@ -275,8 +280,7 @@ impl FieldDefinition {
             "json" | "jsonb" => Ok(FieldType::Json),
             "uuid" => Ok(FieldType::Uuid),
             unknown => Err(anyhow!(
-                "Unknown field type: '{}'. Supported types: string, text, integer, bigint, boolean, float, double, decimal, date, datetime, timestamp, json, uuid, references:Model, array:type, enum:Variant1,Variant2",
-                unknown
+                "Unknown field type: '{unknown}'. Supported types: string, text, integer, bigint, boolean, float, double, decimal, date, datetime, timestamp, json, uuid, references:Model, array:type, enum:Variant1,Variant2"
             )),
         }
     }
@@ -296,10 +300,11 @@ impl FieldDefinition {
     /// let field = FieldDefinition::parse("tags:array:string").unwrap();
     /// assert_eq!(field.rust_type(), "Vec<String>");
     /// ```
+    #[must_use]
     pub fn rust_type(&self) -> String {
         let base_type = self.field_type.rust_type();
         if self.optional {
-            format!("Option<{}>", base_type)
+            format!("Option<{base_type}>")
         } else {
             base_type
         }
@@ -317,6 +322,7 @@ impl FieldDefinition {
     /// let field = FieldDefinition::parse("content:text").unwrap();
     /// assert_eq!(field.sql_type(), "TEXT");
     /// ```
+    #[must_use]
     pub fn sql_type(&self) -> String {
         self.field_type.sql_type()
     }
@@ -339,8 +345,11 @@ impl FieldType {
             Self::Timestamp => "chrono::DateTime<chrono::Utc>".to_string(),
             Self::Json => "serde_json::Value".to_string(),
             Self::Uuid => "uuid::Uuid".to_string(),
-            Self::Reference { model } => format!("{}Id", model),
-            Self::Array { element_type } => format!("Vec<{}>", element_type.rust_type()),
+            Self::Reference { model } => format!("{model}Id"),
+            Self::Array { element_type } => {
+                let inner = element_type.rust_type();
+                format!("Vec<{inner}>")
+            }
             Self::Enum { name, .. } => name.clone(),
         }
     }
@@ -352,7 +361,7 @@ impl FieldType {
             Self::String => "VARCHAR(255)".to_string(),
             Self::Text => "TEXT".to_string(),
             Self::Integer => "INTEGER".to_string(),
-            Self::BigInt => "BIGINT".to_string(),
+            Self::BigInt | Self::Reference { .. } => "BIGINT".to_string(),
             Self::Boolean => "BOOLEAN".to_string(),
             Self::Float => "REAL".to_string(),
             Self::Double => "DOUBLE PRECISION".to_string(),
@@ -362,9 +371,9 @@ impl FieldType {
             Self::Timestamp => "TIMESTAMP WITH TIME ZONE".to_string(),
             Self::Json => "JSONB".to_string(),
             Self::Uuid => "UUID".to_string(),
-            Self::Reference { .. } => "BIGINT".to_string(),
             Self::Array { element_type } => {
-                format!("{}[]", element_type.sql_type())
+                let inner = element_type.sql_type();
+                format!("{inner}[]")
             }
             Self::Enum { .. } => "VARCHAR(50)".to_string(), // Store as string by default
         }
@@ -373,7 +382,9 @@ impl FieldType {
 
 impl fmt::Display for FieldDefinition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.name, self.field_type)?;
+        let name = &self.name;
+        let field_type = &self.field_type;
+        write!(f, "{name}:{field_type}")?;
         if self.optional {
             write!(f, ":optional")?;
         }
@@ -403,10 +414,11 @@ impl fmt::Display for FieldType {
             Self::Timestamp => write!(f, "timestamp"),
             Self::Json => write!(f, "json"),
             Self::Uuid => write!(f, "uuid"),
-            Self::Reference { model } => write!(f, "references:{}", model),
-            Self::Array { element_type } => write!(f, "array:{}", element_type),
+            Self::Reference { model } => write!(f, "references:{model}"),
+            Self::Array { element_type } => write!(f, "array:{element_type}"),
             Self::Enum { name, variants } => {
-                write!(f, "enum:{}({})", name, variants.join(","))
+                let joined = variants.join(",");
+                write!(f, "enum:{name}({joined})")
             }
         }
     }

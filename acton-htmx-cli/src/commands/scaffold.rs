@@ -2,7 +2,7 @@
 //!
 //! This module provides intelligent code generation for complete CRUD resources.
 //! It generates:
-//! - SeaORM models with validation
+//! - `SeaORM` models with validation
 //! - Database migrations
 //! - Form structs with validation
 //! - HTMX handlers (list, show, new, edit, delete) - coming soon
@@ -33,7 +33,7 @@ pub struct ScaffoldCommand {
 }
 
 impl ScaffoldCommand {
-    pub fn new(model: String, fields: Vec<String>) -> Self {
+    pub const fn new(model: String, fields: Vec<String>) -> Self {
         Self { model, fields }
     }
 
@@ -52,7 +52,7 @@ impl ScaffoldCommand {
         // Create generator
         let generator = ScaffoldGenerator::new(
             self.model.clone(),
-            self.fields.clone(),
+            &self.fields,
             project_root.clone(),
         )
         .context("Failed to create scaffold generator")?;
