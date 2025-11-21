@@ -10,8 +10,30 @@
 //! All request extractors and response helpers from `axum-htmx` are re-exported
 //! for convenience. See [axum-htmx documentation](https://docs.rs/axum-htmx) for
 //! detailed usage.
-
-#![allow(dead_code)]
+//!
+//! # Out-of-Band Swaps
+//!
+//! Use [`HxSwapOob`] to update multiple page elements in a single response:
+//!
+//! ```rust,no_run
+//! use acton_htmx::htmx::{HxSwapOob, SwapStrategy};
+//! use axum::response::Html;
+//!
+//! async fn update_with_oob() -> impl axum::response::IntoResponse {
+//!     let mut oob = HxSwapOob::new();
+//!
+//!     // Update main content
+//!     oob.add("main-content", "<p>New main content</p>", SwapStrategy::InnerHTML);
+//!
+//!     // Update notification badge
+//!     oob.add("notification-count", "<span>5</span>", SwapStrategy::InnerHTML);
+//!
+//!     // Update flash messages
+//!     oob.add("flash-container", r#"<div class="alert">Success!</div>"#, SwapStrategy::InnerHTML);
+//!
+//!     oob
+//! }
+//! ```
 
 // Re-export axum-htmx request extractors
 pub use axum_htmx::{
@@ -28,8 +50,6 @@ pub use axum_htmx::{
 // Re-export axum-htmx middleware and guards
 pub use axum_htmx::{AutoVaryLayer, HxRequestGuardLayer};
 
-// TODO: Implement acton-htmx extensions
-// mod swap_oob;
-// mod response;
-// pub use swap_oob::HxSwapOob;
-// pub use response::HxResponse;
+// acton-htmx extensions
+mod swap_oob;
+pub use swap_oob::{HxSwapOob, SwapStrategy};
