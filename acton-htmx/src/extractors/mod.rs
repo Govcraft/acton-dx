@@ -1,11 +1,8 @@
-//! Axum extractors
+//! Axum extractors for acton-htmx
+//!
+//! Provides extractors for accessing session data, flash messages,
+//! and other request context within handlers.
 
-#![allow(dead_code)]
+mod session;
 
-// TODO: Implement extractors
-
-/// Session extractor
-pub struct SessionExtractor;
-
-/// Flash message extractor
-pub struct FlashExtractor;
+pub use session::{FlashExtractor, OptionalSession, SessionExtractor};
