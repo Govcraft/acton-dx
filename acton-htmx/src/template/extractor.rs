@@ -232,13 +232,13 @@ mod tests {
 
     #[test]
     fn test_extract_main_content_with_markers() {
-        let html = r#"
+        let html = r"
 <html>
 <!-- HTMX_PARTIAL_START -->
 <div>Partial</div>
 <!-- HTMX_PARTIAL_END -->
 </html>
-"#;
+";
         let content = extract_main_content(html);
         assert!(content.contains("<div>Partial</div>"));
         assert!(!content.contains("<html>"));

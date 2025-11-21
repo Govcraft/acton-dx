@@ -53,7 +53,7 @@ struct SearchForm {
 
 /// Build the HTML page shell
 fn html_page(login_form: &str, register_form: &str, search_form: &str) -> String {
-    let css = r#"
+    let css = r"
         body { font-family: system-ui, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
         h1, h2 { color: #333; }
         .demo-section { margin: 2rem 0; padding: 1rem; border: 1px solid #ddd; border-radius: 8px; }
@@ -73,7 +73,7 @@ fn html_page(login_form: &str, register_form: &str, search_form: &str) -> String
         textarea.form-input { resize: vertical; }
         nav a { margin-right: 1rem; color: #007bff; text-decoration: none; }
         nav a:hover { text-decoration: underline; }
-    "#;
+    ";
 
     format!(
         r##"<!DOCTYPE html>
@@ -324,8 +324,11 @@ async fn handle_search(Form(form): Form<SearchForm>) -> Html<String> {
     } else {
         let list: String = matches
             .iter()
-            .map(|item| format!("<li>{item}</li>"))
-            .collect();
+            .fold(String::new(), |mut acc, item| {
+                use std::fmt::Write;
+                let _ = write!(&mut acc, "<li>{item}</li>");
+                acc
+            });
         Html(format!(
             r#"<strong>Found {count} result(s) for "{query}":</strong><ul>{list}</ul>"#,
             count = matches.len()

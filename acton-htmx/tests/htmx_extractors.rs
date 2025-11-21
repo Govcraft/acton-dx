@@ -38,8 +38,7 @@ async fn extract_hx_boosted(HxBoosted(boosted): HxBoosted) -> String {
 async fn extract_hx_current_url(HxCurrentUrl(url): HxCurrentUrl) -> String {
     format!(
         "current_url={}",
-        url.map(|u| u.to_string())
-            .unwrap_or_else(|| "none".to_string())
+        url.map_or_else(|| "none".to_string(), |u| u.to_string())
     )
 }
 

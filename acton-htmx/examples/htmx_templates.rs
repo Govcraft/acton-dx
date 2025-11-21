@@ -121,10 +121,12 @@ async fn add_item(
     axum::extract::State(state): axum::extract::State<AppState>,
     Form(form): Form<AddItemForm>,
 ) -> impl IntoResponse {
-    // Create new item
-    let mut counter = state.counter.lock().unwrap();
-    *counter += 1;
-    let new_id = *counter as usize;
+    // Create new item and get counter value
+    let new_id = {
+        let mut counter = state.counter.lock().unwrap();
+        *counter += 1;
+        usize::try_from(*counter).unwrap_or(0)
+    };
 
     let item = Item {
         id: new_id,
@@ -141,13 +143,16 @@ async fn add_item(
     };
 
     let flash_template = FlashTemplate {
-        message: format!("Item {} added!", new_id),
+        message: format!("Item {new_id} added!"),
     };
+
+    let flash_html = flash_template.render().unwrap();
+    let counter_str = new_id.to_string();
 
     // Primary content goes to the hx-target, OOB updates go elsewhere
     HxSwapOob::with_primary(item_template.render().unwrap())
-        .with("flash", &flash_template.render().unwrap(), SwapStrategy::InnerHTML)
-        .with("counter", &counter.to_string(), SwapStrategy::InnerHTML)
+        .with("flash", flash_html, SwapStrategy::InnerHTML)
+        .with("counter", counter_str, SwapStrategy::InnerHTML)
 }
 
 /// OOB swap demo - shows render_oob method

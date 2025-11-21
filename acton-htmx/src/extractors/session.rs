@@ -154,6 +154,7 @@ mod tests {
     #[test]
     fn test_optional_session_default() {
         // Just verify the types compile correctly
-        let _session: OptionalSession = OptionalSession(None);
+        let session: OptionalSession = OptionalSession(None);
+        assert!(session.0.is_none());
     }
 }
