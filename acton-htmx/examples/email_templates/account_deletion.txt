@@ -1,0 +1,30 @@
+⚠️ Account Deletion Request
+
+Hello {{ name }},
+
+We received a request to delete your {{ app_name }} account associated with {{ email }}.
+
+⚠️ Warning: This action is permanent and cannot be undone.
+
+If you confirm this deletion:
+
+• All your personal data will be permanently deleted
+• Your account will be immediately deactivated
+• You will lose access to all your content and settings
+• This action cannot be reversed
+
+To proceed with account deletion, visit:
+
+{{ deletion_url }}
+
+ℹ️ Changed your mind?
+If you didn't request this deletion, please ignore this email. Your account will remain active and this link will expire in {{ expiry_hours }} hours.
+
+We're sorry to see you go. If you have any feedback about your experience, we'd love to hear from you.
+
+Best regards,
+The {{ app_name }} Team
+
+---
+This email was sent to {{ email }}
+© 2025 {{ app_name }}. All rights reserved.

@@ -1,0 +1,22 @@
+📧 Verify Your Email Address
+
+Hello {{ name }},
+
+Please verify your email address to complete your {{ app_name }} account registration.
+
+Verification Code: {{ verification_code }}
+
+Or visit this link to verify:
+
+{{ verification_url }}
+
+This verification link will expire in {{ expiry_hours }} hours.
+
+If you didn't create an account with us, please ignore this email.
+
+Best regards,
+The {{ app_name }} Team
+
+---
+This email was sent to {{ email }}
+© 2025 {{ app_name }}. All rights reserved.

@@ -66,6 +66,7 @@
 // Public modules (exported in public API)
 pub mod auth;
 pub mod config;
+pub mod email;
 pub mod error;
 pub mod extractors;
 pub mod forms;
@@ -160,6 +161,12 @@ pub mod prelude {
 
     // Background jobs
     pub use crate::jobs::{Job, JobAgent, JobError, JobId, JobResult, JobStatus};
+
+    // Email system
+    pub use crate::email::{
+        AwsSesBackend, ConsoleBackend, Email, EmailError, EmailSender, EmailTemplate,
+        SendEmailJob, SimpleEmailTemplate, SmtpBackend,
+    };
 
     // Re-export key dependencies
     pub use askama;

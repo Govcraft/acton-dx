@@ -1,0 +1,18 @@
+Welcome to {{ app_name }}!
+
+Hello {{ name }},
+
+Thank you for joining {{ app_name }}! We're excited to have you on board.
+
+To get started, please verify your email address by visiting this link:
+
+{{ verification_url }}
+
+If you didn't create an account with us, please ignore this email.
+
+Best regards,
+The {{ app_name }} Team
+
+---
+This email was sent to {{ email }}
+© 2025 {{ app_name }}. All rights reserved.
