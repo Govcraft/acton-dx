@@ -6,8 +6,10 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
+pub mod deployment;
 pub mod files;
 pub mod jobs;
+pub use deployment::*;
 pub use files::*;
 pub use jobs::JOB_TEMPLATE;
 

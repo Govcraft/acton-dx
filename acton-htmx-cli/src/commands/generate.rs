@@ -7,9 +7,12 @@ use convert_case::{Case, Casing};
 use handlebars::Handlebars;
 use serde_json::json;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-use crate::templates::JOB_TEMPLATE;
+use crate::templates::{
+    DEPLOYMENT_README, DOCKER_COMPOSE, DOCKERIGNORE, DOCKERFILE, ENV_PRODUCTION, JOB_TEMPLATE,
+    NGINX_CONF,
+};
 
 static SUCCESS: Emoji = Emoji("✓", "√");
 
@@ -48,6 +51,21 @@ pub enum GenerateCommand {
         #[arg(short, long, default_value = "src/jobs")]
         output: PathBuf,
     },
+
+    /// Generate production deployment files
+    ///
+    /// Examples:
+    ///   acton-htmx generate deployment docker
+    ///   acton-htmx generate deployment docker --output=./deploy
+    Deployment {
+        /// Deployment type (only `docker` supported currently)
+        #[arg(value_name = "TYPE", default_value = "docker")]
+        deployment_type: String,
+
+        /// Output directory (default: current directory)
+        #[arg(short, long, default_value = ".")]
+        output: PathBuf,
+    },
 }
 
 impl GenerateCommand {
@@ -71,6 +89,10 @@ impl GenerateCommand {
             } => {
                 Self::generate_job(name, fields, *max_retries, *timeout, *priority, output)
             }
+            Self::Deployment {
+                deployment_type,
+                output,
+            } => Self::generate_deployment(deployment_type, output),
         }
     }
 
@@ -213,6 +235,116 @@ impl GenerateCommand {
         };
 
         Ok((rust_type.to_string(), test_value.to_string()))
+    }
+
+    fn generate_deployment(deployment_type: &str, output: &Path) -> Result<()> {
+        if deployment_type != "docker" {
+            bail!("Only 'docker' deployment type is currently supported");
+        }
+
+        println!(
+            "\n{} Generating Docker deployment files",
+            style("🐳").bold()
+        );
+
+        // Get project name from Cargo.toml
+        let project_name = Self::get_project_name()?;
+        let project_name_snake = project_name.replace('-', "_");
+
+        println!(
+            "  Project: {}",
+            style(&project_name).cyan().bold()
+        );
+
+        // Prepare template context
+        let context = json!({
+            "project_name": project_name,
+            "project_name_snake": project_name_snake,
+        });
+
+        // Setup Handlebars
+        let mut handlebars = Handlebars::new();
+        handlebars.register_escape_fn(handlebars::no_escape);
+
+        println!();
+
+        // Generate files
+        let files = [
+            ("Dockerfile", DOCKERFILE),
+            ("docker-compose.yml", DOCKER_COMPOSE),
+            (".env.production", ENV_PRODUCTION),
+            ("nginx.conf", NGINX_CONF),
+            (".dockerignore", DOCKERIGNORE),
+            ("DEPLOYMENT.md", DEPLOYMENT_README),
+        ];
+
+        for (filename, template) in &files {
+            let rendered = handlebars
+                .render_template(template, &context)
+                .with_context(|| format!("Failed to render template: {filename}"))?;
+
+            let file_path = output.join(filename);
+            fs::write(&file_path, rendered)
+                .with_context(|| format!("Failed to write file: {}", file_path.display()))?;
+
+            println!(
+                "  {} Created: {}",
+                SUCCESS,
+                style(file_path.display()).green()
+            );
+        }
+
+        // Create ssl directory
+        let ssl_dir = output.join("ssl");
+        fs::create_dir_all(&ssl_dir).context("Failed to create ssl directory")?;
+        println!(
+            "  {} Created directory: {}",
+            SUCCESS,
+            style(ssl_dir.display()).green()
+        );
+
+        // Show next steps
+        println!();
+        println!("{}", style("Next steps:").bold().underlined());
+        println!();
+        println!("  1. Configure environment variables:");
+        println!("     {}", style("cp .env.production .env").cyan());
+        println!("     {}", style("# Edit .env and change all CHANGE_ME values").cyan());
+        println!();
+        println!("  2. Generate SSL certificates:");
+        println!("     {}", style("# Self-signed (development):").dim());
+        println!("     {}", style("openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\").cyan());
+        println!("     {}", style("  -keyout ssl/key.pem -out ssl/cert.pem").cyan());
+        println!();
+        println!("  3. Build and start:");
+        println!("     {}", style("docker-compose build").cyan());
+        println!("     {}", style("docker-compose up -d").cyan());
+        println!();
+        println!("  4. Run migrations:");
+        println!("     {}", style("docker-compose exec web /usr/local/bin/app migrate").cyan());
+        println!();
+        println!("  5. Verify deployment:");
+        println!("     {}", style("curl http://localhost:8080/health").cyan());
+        println!();
+        println!("{}", style("📚 For detailed instructions, see DEPLOYMENT.md").bold());
+        println!();
+
+        Ok(())
+    }
+
+    fn get_project_name() -> Result<String> {
+        // Try to read project name from Cargo.toml
+        let cargo_toml = fs::read_to_string("Cargo.toml")
+            .context("Failed to read Cargo.toml. Are you in a project directory?")?;
+
+        // Simple TOML parsing for the package name
+        for line in cargo_toml.lines() {
+            if let Some(name) = line.strip_prefix("name = ") {
+                return Ok(name.trim().trim_matches('"').to_string());
+            }
+        }
+
+        bail!("Could not find project name in Cargo.toml");
     }
 }
 
