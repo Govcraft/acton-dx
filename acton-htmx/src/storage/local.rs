@@ -99,6 +99,11 @@ impl LocalFileStorage {
         self.get_file_directory(id).join(filename)
     }
 
+    /// Gets the path to the metadata file for a stored file
+    fn get_metadata_path(&self, id: &str) -> PathBuf {
+        self.get_file_directory(id).join(".metadata.json")
+    }
+
     /// Ensures the storage directory exists
     async fn ensure_directory(&self, path: &Path) -> StorageResult<()> {
         fs::create_dir_all(path).await?;
@@ -122,19 +127,27 @@ impl FileStorage for LocalFileStorage {
         f.write_all(&file.data).await?;
         f.flush().await?;
 
-        // Return metadata
-        Ok(StoredFile {
+        // Create metadata
+        let stored = StoredFile {
             id: id.clone(),
             filename: file.filename.clone(),
             content_type: file.content_type.clone(),
             size: file.size(),
             storage_path: file_path.to_string_lossy().to_string(),
-        })
+        };
+
+        // Write metadata to sidecar file
+        let metadata_path = self.get_metadata_path(&id);
+        let metadata_json = serde_json::to_string_pretty(&stored)
+            .map_err(|e| StorageError::Other(format!("Failed to serialize metadata: {e}")))?;
+        fs::write(&metadata_path, metadata_json).await?;
+
+        Ok(stored)
     }
 
     async fn retrieve(&self, id: &str) -> StorageResult<Vec<u8>> {
         // We need to find the file by ID, but we don't know the filename
-        // List files in the ID directory and read the first one
+        // List files in the ID directory and read the first non-hidden file
         let dir = self.get_file_directory(id);
 
         if !dir.exists() {
@@ -143,12 +156,17 @@ impl FileStorage for LocalFileStorage {
 
         let mut entries = fs::read_dir(&dir).await?;
 
-        // Read the first file in the directory (there should only be one)
-        if let Some(entry) = entries.next_entry().await? {
+        // Read the first non-hidden file in the directory
+        while let Some(entry) = entries.next_entry().await? {
             let file_path = entry.path();
             if file_path.is_file() {
-                let data = fs::read(&file_path).await?;
-                return Ok(data);
+                // Skip hidden files (like .metadata.json)
+                if let Some(name) = file_path.file_name().and_then(|n| n.to_str()) {
+                    if !name.starts_with('.') {
+                        let data = fs::read(&file_path).await?;
+                        return Ok(data);
+                    }
+                }
             }
         }
 
@@ -177,18 +195,21 @@ impl FileStorage for LocalFileStorage {
 
         let mut entries = fs::read_dir(&dir).await?;
 
-        if let Some(entry) = entries.next_entry().await? {
+        // Find the first non-hidden file
+        while let Some(entry) = entries.next_entry().await? {
             let file_path = entry.path();
             if file_path.is_file() {
-                // Return relative URL path from base
+                // Skip hidden files (like .metadata.json)
                 let filename = file_path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .ok_or_else(|| StorageError::InvalidPath(format!("Invalid filename in {id}")))?;
 
-                // Use first 2 chars as prefix
-                let prefix = &id[..2.min(id.len())];
-                return Ok(format!("/uploads/{prefix}/{id}/{filename}"));
+                if !filename.starts_with('.') {
+                    // Use first 2 chars as prefix
+                    let prefix = &id[..2.min(id.len())];
+                    return Ok(format!("/uploads/{prefix}/{id}/{filename}"));
+                }
             }
         }
 
@@ -198,6 +219,21 @@ impl FileStorage for LocalFileStorage {
     async fn exists(&self, id: &str) -> StorageResult<bool> {
         let dir = self.get_file_directory(id);
         Ok(dir.exists())
+    }
+
+    async fn get_metadata(&self, id: &str) -> StorageResult<StoredFile> {
+        let metadata_path = self.get_metadata_path(id);
+
+        if !metadata_path.exists() {
+            return Err(StorageError::NotFound(id.to_string()));
+        }
+
+        // Read and parse metadata JSON
+        let metadata_json = fs::read_to_string(&metadata_path).await?;
+        let stored: StoredFile = serde_json::from_str(&metadata_json)
+            .map_err(|e| StorageError::Other(format!("Failed to parse metadata: {e}")))?;
+
+        Ok(stored)
     }
 }
 
@@ -309,5 +345,71 @@ mod tests {
         let result = LocalFileStorage::new(file_path);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), StorageError::InvalidPath(_)));
+    }
+
+    #[tokio::test]
+    async fn test_get_metadata() {
+        let (storage, _temp) = create_test_storage();
+
+        let file = UploadedFile::new("document.pdf", "application/pdf", b"fake pdf".to_vec());
+        let stored = storage.store(file).await.unwrap();
+
+        // Get metadata
+        let metadata = storage.get_metadata(&stored.id).await.unwrap();
+        assert_eq!(metadata.id, stored.id);
+        assert_eq!(metadata.filename, "document.pdf");
+        assert_eq!(metadata.content_type, "application/pdf");
+        assert_eq!(metadata.size, 8);
+    }
+
+    #[tokio::test]
+    async fn test_get_metadata_preserves_content_type() {
+        let (storage, _temp) = create_test_storage();
+
+        // Store files with various content types
+        let test_cases = vec![
+            ("image.png", "image/png"),
+            ("video.mp4", "video/mp4"),
+            ("document.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+            ("data.json", "application/json"),
+        ];
+
+        for (filename, content_type) in test_cases {
+            let file = UploadedFile::new(filename, content_type, b"test data".to_vec());
+            let stored = storage.store(file).await.unwrap();
+
+            // Verify metadata preserves original content type
+            let metadata = storage.get_metadata(&stored.id).await.unwrap();
+            assert_eq!(metadata.content_type, content_type, "Content type mismatch for {filename}");
+            assert_eq!(metadata.filename, filename);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_metadata_nonexistent() {
+        let (storage, _temp) = create_test_storage();
+
+        let result = storage.get_metadata("nonexistent-id").await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), StorageError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn test_metadata_file_created() {
+        let (storage, _temp) = create_test_storage();
+
+        let file = UploadedFile::new("test.txt", "text/plain", b"Hello".to_vec());
+        let stored = storage.store(file).await.unwrap();
+
+        // Verify metadata file exists
+        let metadata_path = storage.get_metadata_path(&stored.id);
+        assert!(metadata_path.exists(), "Metadata file should exist");
+
+        // Verify it's valid JSON with expected structure
+        let metadata_json = std::fs::read_to_string(&metadata_path).unwrap();
+        let metadata: StoredFile = serde_json::from_str(&metadata_json).unwrap();
+        assert_eq!(metadata.id, stored.id);
+        assert_eq!(metadata.filename, "test.txt");
+        assert_eq!(metadata.content_type, "text/plain");
     }
 }

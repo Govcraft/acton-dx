@@ -156,9 +156,13 @@ pub async fn serve_file<S: FileStorage>(
     Path(file_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Response, FileServingError> {
-    // Retrieve file metadata (for ETag, Last-Modified, Content-Type)
-    // In a real implementation, this would fetch from storage metadata
-    // For now, we'll work with the file data directly
+    // Retrieve file metadata for content type and other info
+    let metadata = storage
+        .get_metadata(&file_id)
+        .await
+        .map_err(FileServingError::Storage)?;
+
+    // Retrieve file data
     let data = storage
         .retrieve(&file_id)
         .await
@@ -166,7 +170,18 @@ pub async fn serve_file<S: FileStorage>(
 
     // Generate ETag from file ID and size
     let etag = format!(r#""{}-{}""#, file_id, data.len());
-    let content_type = "application/octet-stream"; // TODO: Get from StoredFile metadata
+
+    // Use content type from metadata, with mime_guess fallback
+    let content_type = if !metadata.content_type.is_empty()
+        && metadata.content_type != "application/octet-stream"
+    {
+        metadata.content_type
+    } else {
+        // Fallback to MIME type detection from filename
+        mime_guess::from_path(&metadata.filename)
+            .first_or_octet_stream()
+            .to_string()
+    };
 
     // Check If-None-Match (ETag validation)
     if let Some(if_none_match) = headers.get(IF_NONE_MATCH) {
@@ -177,11 +192,11 @@ pub async fn serve_file<S: FileStorage>(
 
     // Check for range request
     if let Some(range_header) = headers.get(RANGE) {
-        return serve_range_request(&data, range_header, &etag, content_type, &headers);
+        return serve_range_request(&data, range_header, &etag, &content_type, &headers);
     }
 
     // Serve complete file
-    Ok(build_file_response(data, &etag, content_type, None))
+    Ok(build_file_response(data, &etag, &content_type, None))
 }
 
 /// Serve a range request (partial content)
@@ -343,12 +358,114 @@ impl IntoResponse for FileServingError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::storage::{LocalFileStorage, UploadedFile};
+    use tempfile::TempDir;
+
     #[test]
     fn test_etag_generation() {
         let file_id = "test-file-123";
         let data = b"Hello, World!";
         let etag = format!(r#""{}-{}""#, file_id, data.len());
         assert_eq!(etag, r#""test-file-123-13""#);
+    }
+
+    #[tokio::test]
+    async fn test_serve_file_uses_stored_content_type() {
+        let temp = TempDir::new().unwrap();
+        let storage = Arc::new(LocalFileStorage::new(temp.path().to_path_buf()).unwrap());
+
+        // Store a PDF file
+        let file = UploadedFile::new("document.pdf", "application/pdf", b"fake pdf".to_vec());
+        let stored = storage.store(file).await.unwrap();
+
+        // Serve the file
+        let headers = HeaderMap::new();
+        let response = serve_file(State(storage.clone()), Path(stored.id.clone()), headers)
+            .await
+            .unwrap();
+
+        // Verify Content-Type header is from metadata
+        let content_type = response.headers().get(CONTENT_TYPE).unwrap();
+        assert_eq!(content_type, "application/pdf");
+    }
+
+    #[tokio::test]
+    async fn test_serve_file_uses_mime_guess_fallback() {
+        let temp = TempDir::new().unwrap();
+        let storage = Arc::new(LocalFileStorage::new(temp.path().to_path_buf()).unwrap());
+
+        // Store a file with generic content type
+        let file = UploadedFile::new(
+            "image.png",
+            "application/octet-stream",
+            b"fake png".to_vec(),
+        );
+        let stored = storage.store(file).await.unwrap();
+
+        // Serve the file
+        let headers = HeaderMap::new();
+        let response = serve_file(State(storage.clone()), Path(stored.id.clone()), headers)
+            .await
+            .unwrap();
+
+        // Verify Content-Type header is guessed from extension
+        let content_type = response.headers().get(CONTENT_TYPE).unwrap();
+        assert_eq!(content_type, "image/png");
+    }
+
+    #[tokio::test]
+    async fn test_serve_file_preserves_various_content_types() {
+        let temp = TempDir::new().unwrap();
+        let storage = Arc::new(LocalFileStorage::new(temp.path().to_path_buf()).unwrap());
+
+        let test_cases = vec![
+            ("photo.jpg", "image/jpeg", "image/jpeg"),
+            ("video.mp4", "video/mp4", "video/mp4"),
+            ("data.json", "application/json", "application/json"),
+            ("style.css", "text/css", "text/css"),
+            ("script.js", "application/javascript", "application/javascript"),
+        ];
+
+        for (filename, stored_type, expected_type) in test_cases {
+            let file = UploadedFile::new(filename, stored_type, b"test data".to_vec());
+            let stored = storage.store(file).await.unwrap();
+
+            let headers = HeaderMap::new();
+            let response = serve_file(State(storage.clone()), Path(stored.id.clone()), headers)
+                .await
+                .unwrap();
+
+            let content_type = response.headers().get(CONTENT_TYPE).unwrap();
+            assert_eq!(
+                content_type,
+                expected_type,
+                "Content-Type mismatch for {filename}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn test_serve_file_fallback_for_unknown_extension() {
+        let temp = TempDir::new().unwrap();
+        let storage = Arc::new(LocalFileStorage::new(temp.path().to_path_buf()).unwrap());
+
+        // Store file with unknown extension and generic content type
+        let file = UploadedFile::new(
+            "file.unknownext",
+            "application/octet-stream",
+            b"data".to_vec(),
+        );
+        let stored = storage.store(file).await.unwrap();
+
+        let headers = HeaderMap::new();
+        let response = serve_file(State(storage.clone()), Path(stored.id.clone()), headers)
+            .await
+            .unwrap();
+
+        // Should fallback to octet-stream
+        let content_type = response.headers().get(CONTENT_TYPE).unwrap();
+        assert_eq!(content_type, "application/octet-stream");
     }
 
     // TODO: Implement comprehensive range request tests

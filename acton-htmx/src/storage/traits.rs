@@ -173,4 +173,32 @@ pub trait FileStorage: Send + Sync {
     /// # }
     /// ```
     async fn exists(&self, id: &str) -> StorageResult<bool>;
+
+    /// Retrieves file metadata by ID
+    ///
+    /// This method retrieves only the metadata (filename, content type, size, etc.)
+    /// without reading the actual file data. This is useful for serving files with
+    /// proper Content-Type headers and other metadata.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The file doesn't exist (`StorageError::NotFound`)
+    /// - The storage backend is unavailable
+    /// - Metadata cannot be read
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// # use acton_htmx::storage::{FileStorage, LocalFileStorage};
+    /// # use std::path::PathBuf;
+    /// # async fn example() -> anyhow::Result<()> {
+    /// # let storage = LocalFileStorage::new(PathBuf::from("/tmp"))?;
+    /// let metadata = storage.get_metadata("550e8400-e29b-41d4-a716-446655440000").await?;
+    /// println!("Content-Type: {}", metadata.content_type);
+    /// println!("Size: {} bytes", metadata.size);
+    /// # Ok(())
+    /// # }
+    /// ```
+    async fn get_metadata(&self, id: &str) -> StorageResult<StoredFile>;
 }

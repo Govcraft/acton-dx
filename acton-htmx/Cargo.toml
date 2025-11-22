@@ -73,6 +73,7 @@ cedar-policy = { version = "4.3", optional = true }
 regex = "1.12.2"
 dirs = "6.0.0"
 clamav-client = { version = "2.2.0", features = ["tokio"], optional = true }
+mime_guess = "2.0.5"
 
 [dev-dependencies]
 proptest.workspace = true
