@@ -95,16 +95,62 @@ impl JobsCommand {
         }
     }
 
-    fn list(status: Option<&str>, limit: usize) {
+    fn list(status: Option<&str>, _limit: usize) {
+        #[derive(Deserialize)]
+        struct JobListResponse {
+            jobs: Vec<JobInfo>,
+            total: usize,
+            message: String,
+        }
+
+        #[derive(Deserialize)]
+        struct JobInfo {
+            id: String,
+            job_type: String,
+            status: String,
+            created_at: String,
+            priority: i32,
+        }
+
         println!("\n{INFO} Job Queue");
         println!();
 
-        // TODO: Connect to job service via HTTP API or direct agent connection
-        // For now, show placeholder
+        // Fetch jobs from job service API
+        let base_url = std::env::var("ACTON_HTMX_API_URL")
+            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        let url = format!("{base_url}/admin/jobs/list");
+
+        let response = match ureq::get(&url).call() {
+            Ok(response) => {
+                let body = match response.into_body().read_to_string() {
+                    Ok(body) => body,
+                    Err(e) => {
+                        println!("  {} Failed to read response: {}", style("Error:").red(), e);
+                        return;
+                    }
+                };
+                match serde_json::from_str::<JobListResponse>(&body) {
+                    Ok(response) => response,
+                    Err(e) => {
+                        println!("  {} Failed to parse response: {}", style("Error:").red(), e);
+                        println!();
+                        println!("{INFO} Ensure your application is running with job agent enabled.");
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                println!("  {} Failed to connect to API: {}", style("Error:").red(), e);
+                println!();
+                println!("{INFO} Make sure your acton-htmx application is running at {}", style(base_url).cyan());
+                println!("{INFO} You can set a custom URL with: ACTON_HTMX_API_URL=http://your-api:3000");
+                return;
+            }
+        };
 
         let header = status.map_or_else(
-            || format!("Showing last {limit} jobs"),
-            |status| format!("Showing {limit} jobs with status: {}", style(status).cyan()),
+            || format!("Showing {} jobs (total: {})", response.jobs.len(), response.total),
+            |status| format!("Showing {} jobs with status: {} (total: {})", response.jobs.len(), style(status).cyan(), response.total),
         );
 
         println!("{}", style(header).bold());
@@ -113,14 +159,29 @@ impl JobsCommand {
         // Table header
         println!(
             "{:<12} {:<20} {:<12} {:<20} {:<10}",
-            "ID", "Type", "Status", "Created", "Duration"
+            "ID", "Type", "Status", "Created", "Priority"
         );
         println!("{}", "─".repeat(80));
 
-        // TODO: Fetch and display actual jobs
-        println!("  {}", style("(No jobs to display)").dim());
+        if response.jobs.is_empty() {
+            println!("  {}", style("(No jobs to display)").dim());
+        } else {
+            for job in response.jobs {
+                println!(
+                    "{:<12} {:<20} {:<12} {:<20} {:<10}",
+                    &job.id[..job.id.len().min(12)],
+                    &job.job_type[..job.job_type.len().min(20)],
+                    style(&job.status).cyan(),
+                    &job.created_at[..job.created_at.len().min(20)],
+                    job.priority
+                );
+            }
+        }
+
         println!();
-        println!("{INFO} To enable job management, ensure your application is running with job agent enabled.");
+        if !response.message.is_empty() {
+            println!("{INFO} {}", response.message);
+        }
     }
 
     fn stats() {
@@ -130,27 +191,50 @@ impl JobsCommand {
             running: usize,
             pending: usize,
             completed: u64,
-            failed: usize,
+            failed: u64,
+            dead_letter: u64,
             avg_execution_ms: f64,
             p95_execution_ms: f64,
+            p99_execution_ms: f64,
             success_rate: f64,
+            #[allow(dead_code)] // Used for future features
+            message: String,
         }
 
         println!("\n{INFO} Job Statistics");
         println!();
 
-        // TODO: Fetch actual stats from job service
+        // Fetch stats from job service API
+        let base_url = std::env::var("ACTON_HTMX_API_URL")
+            .unwrap_or_else(|_| "http://localhost:3000".to_string());
+        let url = format!("{base_url}/admin/jobs/stats");
 
-        // Placeholder stats
-        let stats = JobStats {
-            total_enqueued: 0,
-            running: 0,
-            pending: 0,
-            completed: 0,
-            failed: 0,
-            avg_execution_ms: 0.0,
-            p95_execution_ms: 0.0,
-            success_rate: 100.0,
+        let stats = match ureq::get(&url).call() {
+            Ok(response) => {
+                let body = match response.into_body().read_to_string() {
+                    Ok(body) => body,
+                    Err(e) => {
+                        println!("  {} Failed to read response: {}", style("Error:").red(), e);
+                        return;
+                    }
+                };
+                match serde_json::from_str::<JobStats>(&body) {
+                    Ok(stats) => stats,
+                    Err(e) => {
+                        println!("  {} Failed to parse response: {}", style("Error:").red(), e);
+                        println!();
+                        println!("{INFO} Ensure your application is running with job agent enabled.");
+                        return;
+                    }
+                }
+            }
+            Err(e) => {
+                println!("  {} Failed to connect to API: {}", style("Error:").red(), e);
+                println!();
+                println!("{INFO} Make sure your acton-htmx application is running at {}", style(base_url).cyan());
+                println!("{INFO} You can set a custom URL with: ACTON_HTMX_API_URL=http://your-api:3000");
+                return;
+            }
         };
 
         println!("{}", style("Queue Status").bold().underlined());
@@ -159,6 +243,7 @@ impl JobsCommand {
         println!("  Pending:         {}", style(stats.pending).blue());
         println!("  Completed:       {}", style(stats.completed).green());
         println!("  Failed:          {}", style(stats.failed).red());
+        println!("  Dead Letter:     {}", style(stats.dead_letter).red());
         println!();
 
         println!("{}", style("Performance Metrics").bold().underlined());
@@ -169,6 +254,10 @@ impl JobsCommand {
         println!(
             "  P95 Execution:   {} ms",
             style(format!("{:.2}", stats.p95_execution_ms)).cyan()
+        );
+        println!(
+            "  P99 Execution:   {} ms",
+            style(format!("{:.2}", stats.p99_execution_ms)).cyan()
         );
         println!(
             "  Success Rate:    {}%",
