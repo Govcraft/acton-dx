@@ -73,6 +73,7 @@ pub mod htmx;
 pub mod jobs;
 pub mod observability;
 pub mod state;
+pub mod storage;
 pub mod template;
 
 // Public modules for actors and agents
@@ -143,7 +144,10 @@ pub mod prelude {
     pub use crate::auth::{Authenticated, OptionalAuth, Session};
 
     // Extractors
-    pub use crate::extractors::{FlashExtractor, SessionExtractor};
+    pub use crate::extractors::{FileUpload, FileUploadError, FlashExtractor, MultiFileUpload, SessionExtractor};
+
+    // Storage
+    pub use crate::storage::{FileStorage, LocalFileStorage, StorageError, StoredFile, UploadedFile};
 
     // Error types
     pub use crate::error::ActonHtmxError;
