@@ -67,6 +67,62 @@ pub struct JobMetrics {
     pub current_queue_size: usize,
     /// Current number of running jobs.
     pub current_running: usize,
+    /// Total execution time in milliseconds.
+    pub total_execution_time_ms: u64,
+    /// Average execution time in milliseconds.
+    pub avg_execution_time_ms: u64,
+    /// Minimum execution time in milliseconds.
+    pub min_execution_time_ms: u64,
+    /// Maximum execution time in milliseconds.
+    pub max_execution_time_ms: u64,
+    /// P50 (median) execution time in milliseconds.
+    pub p50_execution_time_ms: u64,
+    /// P95 execution time in milliseconds.
+    pub p95_execution_time_ms: u64,
+    /// P99 execution time in milliseconds.
+    pub p99_execution_time_ms: u64,
+}
+
+impl JobMetrics {
+    /// Update metrics with a completed job execution time.
+    ///
+    /// This updates percentile calculations using a simple streaming algorithm.
+    /// For production use, consider using a histogram library like `hdrhistogram`.
+    pub const fn record_execution_time(&mut self, execution_time_ms: u64) {
+        self.total_execution_time_ms = self.total_execution_time_ms.saturating_add(execution_time_ms);
+
+        // Update min/max
+        if self.min_execution_time_ms == 0 || execution_time_ms < self.min_execution_time_ms {
+            self.min_execution_time_ms = execution_time_ms;
+        }
+        if execution_time_ms > self.max_execution_time_ms {
+            self.max_execution_time_ms = execution_time_ms;
+        }
+
+        // Update average
+        if self.jobs_completed > 0 {
+            self.avg_execution_time_ms = self.total_execution_time_ms / self.jobs_completed;
+        }
+
+        // Simple percentile estimation (will be replaced with histogram in production)
+        // For now, use max as p99, avg as p50, and interpolate p95
+        self.p50_execution_time_ms = self.avg_execution_time_ms;
+        self.p95_execution_time_ms = self.avg_execution_time_ms +
+            ((self.max_execution_time_ms.saturating_sub(self.avg_execution_time_ms)) * 75 / 100);
+        self.p99_execution_time_ms = self.max_execution_time_ms;
+    }
+
+    /// Calculate failure rate as percentage (0-100).
+    #[must_use]
+    #[allow(clippy::cast_precision_loss)] // Acceptable for metrics
+    pub fn failure_rate(&self) -> f64 {
+        let total = self.jobs_completed + self.jobs_failed;
+        if total == 0 {
+            0.0
+        } else {
+            (self.jobs_failed as f64 / total as f64) * 100.0
+        }
+    }
 }
 
 /// Internal message to trigger job processing.
