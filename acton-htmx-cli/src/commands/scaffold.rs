@@ -95,11 +95,22 @@ impl ScaffoldCommand {
             style(&self.model).green().bold()
         );
 
+        let model_snake = TemplateHelpers::to_snake_case(&self.model);
+        let plural = TemplateHelpers::pluralize(&model_snake);
+
         println!("\n{}", style("Next steps:").cyan().bold());
-        println!("  1. Run the migration: {}", style("cargo run --bin migrate").yellow());
-        println!("  2. Add model to src/models/mod.rs: {}", style(format!("pub mod {};", TemplateHelpers::to_snake_case(&self.model))).yellow());
-        println!("  3. Add form to src/forms/mod.rs: {}", style(format!("pub mod {};", TemplateHelpers::to_snake_case(&self.model))).yellow());
-        println!("  4. Build your project: {}", style("cargo build").yellow());
+        println!("  1. Add imports to your modules:");
+        println!("     {}", style(format!("src/models/mod.rs: pub mod {model_snake};")).yellow());
+        println!("     {}", style(format!("src/forms/mod.rs: pub mod {model_snake};")).yellow());
+        println!("     {}", style(format!("src/handlers/mod.rs: pub mod {plural};")).yellow());
+        println!("  2. Run the migration: {}", style("acton-htmx db migrate").yellow());
+        println!("  3. Add routes to your router:");
+        println!("     {}", style(format!(".route(\"{route_path}\", get(handlers::{plural}::list).post(handlers::{plural}::create))", route_path = TemplateHelpers::to_route_path(&self.model))).yellow());
+        println!("     {}", style(format!(".route(\"{route_path}/new\", get(handlers::{plural}::new))", route_path = TemplateHelpers::to_route_path(&self.model))).yellow());
+        println!("     {}", style(format!(".route(\"{route_path}/:id\", get(handlers::{plural}::show).put(handlers::{plural}::update).delete(handlers::{plural}::delete))", route_path = TemplateHelpers::to_route_path(&self.model))).yellow());
+        println!("     {}", style(format!(".route(\"{route_path}/:id/edit\", get(handlers::{plural}::edit))", route_path = TemplateHelpers::to_route_path(&self.model))).yellow());
+        println!("     {}", style(format!(".route(\"{route_path}/search\", get(handlers::{plural}::search))", route_path = TemplateHelpers::to_route_path(&self.model))).yellow());
+        println!("  4. Test your application: {}", style("cargo test").yellow());
 
         Ok(())
     }

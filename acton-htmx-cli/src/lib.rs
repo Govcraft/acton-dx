@@ -7,7 +7,9 @@
 #![allow(clippy::multiple_crate_versions)]
 
 pub mod scaffold;
+pub mod template_manager;
 pub mod templates;
 
 pub use scaffold::{FieldDefinition, FieldType, ScaffoldGenerator, TemplateHelpers};
+pub use template_manager::TemplateManager;
 pub use templates::ProjectTemplate;

@@ -82,27 +82,24 @@ impl ScaffoldGenerator {
     /// 1. Model file (src/models/{model}.rs)
     /// 2. Migration file (migrations/{timestamp}_create_{table}.sql)
     /// 3. Form file (src/forms/{model}.rs)
-    /// 4. Handler file (src/handlers/{model}s.rs) - coming soon
-    /// 5. Template files (templates/{model}s/*.html) - coming soon
-    /// 6. Test file (`tests/{model}s_test.rs`) - coming soon
-    /// 7. Updates to main.rs for route registration - coming soon
+    /// 4. Handler file (src/handlers/{model}s.rs)
+    /// 5. Template files (templates/{model}s/*.html)
+    /// 6. Test file (`tests/{model}s_test.rs`)
     ///
     /// # Errors
     ///
     /// Returns an error if template rendering fails for any file
     pub fn generate(&self) -> Result<Vec<GeneratedFile>> {
-        // Generate model, migration, and form files
-        let generated_files = vec![
+        let mut generated_files = vec![
             self.generate_model()?,
             self.generate_migration()?,
             self.generate_forms()?,
+            self.generate_handlers()?,
+            self.generate_tests()?,
         ];
 
-        // Handler & Template generation coming soon
-        // generated_files.push(self.generate_handlers()?);
-        // generated_files.extend(self.generate_templates()?);
-        // generated_files.push(self.generate_tests()?);
-        // generated_files.push(self.update_routes()?);
+        // Add all template files
+        generated_files.extend(self.generate_templates()?);
 
         Ok(generated_files)
     }
@@ -360,6 +357,108 @@ impl ScaffoldGenerator {
             description: format!("Form validation for {model_name}"),
         })
     }
+
+    /// Generate handler file with all CRUD operations
+    fn generate_handlers(&self) -> Result<GeneratedFile> {
+        let metadata = self.model_metadata();
+        let content = self.templates.render("handler", &metadata)?;
+
+        let model_snake = TemplateHelpers::to_snake_case(&self.model_name);
+        let plural = TemplateHelpers::pluralize(&model_snake);
+        let path = PathBuf::from(format!("src/handlers/{plural}.rs"));
+
+        let model_name = &self.model_name;
+        Ok(GeneratedFile {
+            path,
+            content,
+            description: format!("HTMX handlers for {model_name}"),
+        })
+    }
+
+    /// Generate integration tests
+    fn generate_tests(&self) -> Result<GeneratedFile> {
+        let metadata = self.model_metadata();
+        let content = self.templates.render("test", &metadata)?;
+
+        let model_snake = TemplateHelpers::to_snake_case(&self.model_name);
+        let plural = TemplateHelpers::pluralize(&model_snake);
+        let path = PathBuf::from(format!("tests/{plural}_test.rs"));
+
+        let model_name = &self.model_name;
+        Ok(GeneratedFile {
+            path,
+            content,
+            description: format!("Integration tests for {model_name}"),
+        })
+    }
+
+    /// Generate all Askama templates
+    fn generate_templates(&self) -> Result<Vec<GeneratedFile>> {
+        use crate::template_manager::TemplateManager;
+
+        let metadata = self.model_metadata();
+        let model_snake = TemplateHelpers::to_snake_case(&self.model_name);
+        let plural = TemplateHelpers::pluralize(&model_snake);
+
+        // Get template manager for loading template files
+        let template_manager = TemplateManager::new()?;
+
+        // Create a temporary Handlebars instance for template rendering
+        let mut hb = handlebars::Handlebars::new();
+        hb.register_escape_fn(handlebars::no_escape);
+
+        let mut templates = Vec::new();
+
+        // Helper to load and render a template file
+        let render_template_file = |filename: &str, description: &str, dest: &str| -> Result<GeneratedFile> {
+            let template_path = template_manager.get_template_path(filename)?;
+            let template_content = std::fs::read_to_string(&template_path)?;
+            let rendered = hb.render_template(&template_content, &metadata)?;
+
+            Ok(GeneratedFile {
+                path: PathBuf::from(dest),
+                content: rendered,
+                description: description.to_string(),
+            })
+        };
+
+        // List template
+        templates.push(render_template_file(
+            "list.html.hbs",
+            &format!("List view for {}", self.model_name),
+            &format!("templates/{plural}/list.html"),
+        )?);
+
+        // Show template
+        templates.push(render_template_file(
+            "show.html.hbs",
+            &format!("Show view for {}", self.model_name),
+            &format!("templates/{plural}/show.html"),
+        )?);
+
+        // Form template (new and edit)
+        templates.push(render_template_file(
+            "form.html.hbs",
+            &format!("Form view for {}", self.model_name),
+            &format!("templates/{plural}/form.html"),
+        )?);
+
+        // Row partial (single row)
+        templates.push(render_template_file(
+            "_row.html.hbs",
+            &format!("Row partial for {}", self.model_name),
+            &format!("templates/{plural}/_row.html"),
+        )?);
+
+        // Rows partial (multiple rows)
+        templates.push(render_template_file(
+            "_rows.html.hbs",
+            &format!("Rows partial for {}", self.model_name),
+            &format!("templates/{plural}/_rows.html"),
+        )?);
+
+        Ok(templates)
+    }
 }
 
 /// Represents a generated file
@@ -576,9 +675,82 @@ mod tests {
         .unwrap();
 
         let files = generator.generate().unwrap();
-        assert_eq!(files.len(), 3); // model, migration, form
-        assert!(files[0].path.to_string_lossy().contains("post.rs"));
-        assert!(files[1].path.to_string_lossy().contains("posts.sql"));
-        assert!(files[2].path.to_string_lossy().contains("post.rs"));
+        assert_eq!(files.len(), 10); // model, migration, form, handler, test, + 5 templates
+
+        // Verify key files
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("models/post.rs")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("migrations/") && f.path.to_string_lossy().contains("posts.sql")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("forms/post.rs")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("handlers/posts.rs")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("tests/posts_test.rs")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("templates/posts/list.html")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("templates/posts/show.html")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("templates/posts/form.html")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("templates/posts/_row.html")));
+        assert!(files.iter().any(|f| f.path.to_string_lossy().contains("templates/posts/_rows.html")));
+    }
+
+    #[test]
+    fn test_handler_generation() {
+        let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string(), "content:text".to_string()];
+        let generator = ScaffoldGenerator::new(
+            "Post".to_string(),
+            &fields,
+            temp_dir.path().to_path_buf(),
+        )
+        .unwrap();
+
+        let generated = generator.generate_handlers().unwrap();
+        assert!(generated.path.to_string_lossy().contains("handlers/posts.rs"));
+        assert!(generated.content.contains("pub async fn list("));
+        assert!(generated.content.contains("pub async fn show("));
+        assert!(generated.content.contains("pub async fn new("));
+        assert!(generated.content.contains("pub async fn create("));
+        assert!(generated.content.contains("pub async fn edit("));
+        assert!(generated.content.contains("pub async fn update("));
+        assert!(generated.content.contains("pub async fn delete("));
+        assert!(generated.content.contains("pub async fn search("));
+    }
+
+    #[test]
+    fn test_template_generation() {
+        let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string()];
+        let generator = ScaffoldGenerator::new(
+            "Post".to_string(),
+            &fields,
+            temp_dir.path().to_path_buf(),
+        )
+        .unwrap();
+
+        let templates = generator.generate_templates().unwrap();
+        assert_eq!(templates.len(), 5);
+
+        let list_template = templates.iter().find(|t| t.path.to_string_lossy().contains("list.html")).unwrap();
+        assert!(list_template.content.contains("{% extends \"base.html\" %}"));
+        assert!(list_template.content.contains("hx-get"));
+        assert!(list_template.content.contains("hx-target"));
+    }
+
+    #[test]
+    fn test_test_generation() {
+        let temp_dir = tempdir().unwrap();
+        let fields = vec!["title:string".to_string()];
+        let generator = ScaffoldGenerator::new(
+            "Post".to_string(),
+            &fields,
+            temp_dir.path().to_path_buf(),
+        )
+        .unwrap();
+
+        let generated = generator.generate_tests().unwrap();
+        assert!(generated.path.to_string_lossy().contains("tests/posts_test.rs"));
+        assert!(generated.content.contains("test_list_posts"));
+        assert!(generated.content.contains("test_create_post"));
+        assert!(generated.content.contains("test_show_post"));
+        assert!(generated.content.contains("test_update_post"));
+        assert!(generated.content.contains("test_delete_post"));
+        assert!(generated.content.contains("test_validation_errors"));
     }
 }
