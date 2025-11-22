@@ -70,6 +70,7 @@ pub mod error;
 pub mod extractors;
 pub mod forms;
 pub mod htmx;
+pub mod jobs;
 pub mod observability;
 pub mod state;
 pub mod template;
@@ -152,6 +153,9 @@ pub mod prelude {
 
     // Session middleware
     pub use crate::middleware::{SessionConfig, SessionLayer};
+
+    // Background jobs
+    pub use crate::jobs::{Job, JobAgent, JobError, JobId, JobResult, JobStatus};
 
     // Re-export key dependencies
     pub use askama;
