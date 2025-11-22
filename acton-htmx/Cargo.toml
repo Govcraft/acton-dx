@@ -72,6 +72,7 @@ reqwest = { version = "0.12.24", features = ["json"] }
 cedar-policy = { version = "4.3", optional = true }
 regex = "1.12.2"
 dirs = "6.0.0"
+clamav-client = { version = "2.2.0", features = ["tokio"], optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
@@ -91,6 +92,7 @@ redis = ["dep:redis", "dep:deadpool-redis"]
 otel-metrics = ["dep:opentelemetry", "dep:opentelemetry-otlp"]
 aws-sdk-sesv2 = ["dep:aws-sdk-sesv2"]
 aws-config = ["dep:aws-config"]
+clamav = ["dep:clamav-client"]
 
 [lib]
 name = "acton_htmx"

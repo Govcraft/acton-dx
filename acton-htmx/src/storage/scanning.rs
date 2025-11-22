@@ -186,67 +186,235 @@ impl VirusScanner for NoOpScanner {
     }
 }
 
-/// ClamAV scanner placeholder
+/// ClamAV connection type
 ///
-/// This scanner is a placeholder for future ClamAV integration.
-/// Currently returns an error indicating the feature is not yet implemented.
-///
-/// # Future Implementation
-///
-/// When implemented, this will integrate with ClamAV daemon (clamd) via TCP or Unix socket.
-/// The implementation will require:
-/// 1. Adding a ClamAV client library dependency
-/// 2. Implementing the INSTREAM protocol
-/// 3. Parsing threat detection responses
-///
-/// # Examples
-///
-/// ```rust
-/// use acton_htmx::storage::scanning::ClamAvScanner;
-///
-/// // Create placeholder scanner
-/// let scanner = ClamAvScanner::new();
-/// ```
-#[derive(Debug, Clone, Default)]
-pub struct ClamAvScanner;
-
-impl ClamAvScanner {
-    /// Creates a new ClamAV scanner placeholder
+/// Specifies how to connect to the ClamAV daemon (clamd).
+#[cfg(feature = "clamav")]
+#[derive(Debug, Clone)]
+pub enum ClamAvConnection {
+    /// TCP connection
     ///
     /// # Examples
     ///
     /// ```rust
-    /// use acton_htmx::storage::scanning::ClamAvScanner;
+    /// # #[cfg(feature = "clamav")]
+    /// # {
+    /// use acton_htmx::storage::scanning::{ClamAvScanner, ClamAvConnection};
     ///
-    /// let scanner = ClamAvScanner::new();
+    /// let scanner = ClamAvScanner::new(ClamAvConnection::Tcp {
+    ///     host: "localhost".to_string(),
+    ///     port: 3310,
+    /// });
+    /// # }
+    /// ```
+    Tcp {
+        /// Hostname or IP address
+        host: String,
+        /// Port number
+        port: u16,
+    },
+
+    /// Unix domain socket connection
+    ///
+    /// Only available on Unix platforms (Linux, macOS, etc.)
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(all(feature = "clamav", unix))]
+    /// # {
+    /// use acton_htmx::storage::scanning::{ClamAvScanner, ClamAvConnection};
+    /// use std::path::PathBuf;
+    ///
+    /// let scanner = ClamAvScanner::new(ClamAvConnection::Socket {
+    ///     path: PathBuf::from("/var/run/clamav/clamd.sock"),
+    /// });
+    /// # }
+    /// ```
+    #[cfg(unix)]
+    Socket {
+        /// Path to Unix domain socket
+        path: std::path::PathBuf,
+    },
+}
+
+/// ClamAV virus scanner
+///
+/// Integrates with ClamAV daemon (clamd) for virus scanning. Supports both
+/// TCP and Unix socket connections.
+///
+/// # Feature Flag
+///
+/// This scanner requires the `clamav` feature to be enabled:
+///
+/// ```toml
+/// [dependencies]
+/// acton-htmx = { version = "1.0", features = ["clamav"] }
+/// ```
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// # #[cfg(feature = "clamav")]
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// use acton_htmx::storage::{UploadedFile, scanning::{VirusScanner, ClamAvScanner, ClamAvConnection}};
+///
+/// let scanner = ClamAvScanner::new(ClamAvConnection::Tcp {
+///     host: "localhost".to_string(),
+///     port: 3310,
+/// });
+///
+/// // Check if ClamAV is available
+/// if !scanner.is_available().await {
+///     eprintln!("ClamAV daemon is not available");
+///     return Ok(());
+/// }
+///
+/// // Scan a file
+/// let file = UploadedFile::new("document.pdf", "application/pdf", vec![/* ... */]);
+/// let result = scanner.scan(&file).await?;
+/// # Ok(())
+/// # }
+/// ```
+#[cfg(feature = "clamav")]
+#[derive(Debug, Clone)]
+pub struct ClamAvScanner {
+    connection: ClamAvConnection,
+}
+
+#[cfg(feature = "clamav")]
+impl ClamAvScanner {
+    /// Creates a new ClamAV scanner
+    ///
+    /// # Arguments
+    ///
+    /// * `connection` - How to connect to the ClamAV daemon
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "clamav")]
+    /// # {
+    /// use acton_htmx::storage::scanning::{ClamAvScanner, ClamAvConnection};
+    ///
+    /// // TCP connection
+    /// let scanner = ClamAvScanner::new(ClamAvConnection::Tcp {
+    ///     host: "localhost".to_string(),
+    ///     port: 3310,
+    /// });
+    ///
+    /// // Unix socket connection
+    /// let scanner = ClamAvScanner::new(ClamAvConnection::Socket {
+    ///     path: "/var/run/clamav/clamd.sock".into(),
+    /// });
+    /// # }
     /// ```
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub const fn new(connection: ClamAvConnection) -> Self {
+        Self { connection }
+    }
+
+    /// Creates a new ClamAV scanner with default TCP settings
+    ///
+    /// Connects to `localhost:3310` (the default ClamAV port).
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(feature = "clamav")]
+    /// # {
+    /// use acton_htmx::storage::scanning::ClamAvScanner;
+    ///
+    /// let scanner = ClamAvScanner::default_tcp();
+    /// # }
+    /// ```
+    #[must_use]
+    pub fn default_tcp() -> Self {
+        Self::new(ClamAvConnection::Tcp {
+            host: "localhost".to_string(),
+            port: 3310,
+        })
+    }
+
+    /// Creates a new ClamAV scanner with default Unix socket settings
+    ///
+    /// Connects to `/var/run/clamav/clamd.sock` (common default path).
+    ///
+    /// Only available on Unix platforms.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(all(feature = "clamav", unix))]
+    /// # {
+    /// use acton_htmx::storage::scanning::ClamAvScanner;
+    ///
+    /// let scanner = ClamAvScanner::default_socket();
+    /// # }
+    /// ```
+    #[must_use]
+    #[cfg(unix)]
+    pub fn default_socket() -> Self {
+        Self::new(ClamAvConnection::Socket {
+            path: "/var/run/clamav/clamd.sock".into(),
+        })
     }
 }
 
+#[cfg(feature = "clamav")]
 #[async_trait]
 impl VirusScanner for ClamAvScanner {
-    async fn scan(&self, _file: &UploadedFile) -> StorageResult<ScanResult> {
-        // NOTE: Full ClamAV integration requires the clamav-client crate
-        // For now, this is a placeholder that returns an error indicating
-        // ClamAV support needs to be configured.
-        //
-        // To implement full ClamAV scanning:
-        // 1. Add `clamav-client` dependency
-        // 2. Implement TCP/Unix socket connection
-        // 3. Send INSTREAM command with file data
-        // 4. Parse response for threats
-        //
-        // Example response parsing:
-        // - "stream: OK" -> Clean
-        // - "stream: Win.Test.EICAR_HDB-1 FOUND" -> Infected
-        // - Other -> Error
+    async fn scan(&self, file: &UploadedFile) -> StorageResult<ScanResult> {
+        use clamav_client::tokio::{scan_buffer, Tcp};
+        #[cfg(unix)]
+        use clamav_client::tokio::Socket;
 
-        Err(StorageError::Other(
-            "ClamAV scanning not yet implemented. Use NoOpScanner for development.".to_string(),
-        ))
+        // Get file data (data is a field, not a method)
+        let data = &file.data;
+
+        // Scan based on connection type
+        let response = match &self.connection {
+            ClamAvConnection::Tcp { host, port } => {
+                let host_address = format!("{}:{}", host, port);
+                let clamd = Tcp {
+                    host_address: &host_address,
+                };
+                scan_buffer(data, clamd, None)
+                    .await
+                    .map_err(|e| StorageError::Other(format!("ClamAV scan failed: {}", e)))?
+            }
+            #[cfg(unix)]
+            ClamAvConnection::Socket { path } => {
+                let path_str = path
+                    .to_str()
+                    .ok_or_else(|| StorageError::Other("Invalid socket path".to_string()))?;
+                let clamd = Socket {
+                    socket_path: path_str,
+                };
+                scan_buffer(data, clamd, None)
+                    .await
+                    .map_err(|e| StorageError::Other(format!("ClamAV scan failed: {}", e)))?
+            }
+            #[cfg(not(unix))]
+            ClamAvConnection::Socket { .. } => {
+                return Err(StorageError::Other(
+                    "Unix socket connections not supported on this platform".to_string(),
+                ))
+            }
+        };
+
+        // Parse response
+        match clamav_client::clean(&response) {
+            Ok(true) => Ok(ScanResult::Clean),
+            Ok(false) => {
+                // Extract threat name from response
+                let threat = String::from_utf8_lossy(&response).trim().to_string();
+                Ok(ScanResult::Infected { threat })
+            }
+            Err(e) => Ok(ScanResult::Error {
+                message: format!("Failed to parse scan result: {}", e),
+            }),
+        }
     }
 
     fn name(&self) -> &'static str {
@@ -254,7 +422,89 @@ impl VirusScanner for ClamAvScanner {
     }
 
     async fn is_available(&self) -> bool {
-        // TODO: Implement ClamAV availability check (PING command)
+        use clamav_client::tokio::{ping, Tcp};
+        use clamav_client::PONG;
+        #[cfg(unix)]
+        use clamav_client::tokio::Socket;
+
+        match &self.connection {
+            ClamAvConnection::Tcp { host, port } => {
+                let host_address = format!("{}:{}", host, port);
+                let clamd = Tcp {
+                    host_address: &host_address,
+                };
+                matches!(ping(clamd).await, Ok(response) if response == *PONG)
+            }
+            #[cfg(unix)]
+            ClamAvConnection::Socket { path } => {
+                let Some(path_str) = path.to_str() else {
+                    return false;
+                };
+                let clamd = Socket {
+                    socket_path: path_str,
+                };
+                matches!(ping(clamd).await, Ok(response) if response == *PONG)
+            }
+            #[cfg(not(unix))]
+            ClamAvConnection::Socket { .. } => false,
+        }
+    }
+}
+
+/// ClamAV scanner placeholder (when feature is disabled)
+///
+/// This is a compile-time placeholder that exists when the `clamav` feature
+/// is not enabled. It always returns an error indicating that ClamAV support
+/// is not compiled in.
+///
+/// # Examples
+///
+/// ```rust
+/// # #[cfg(not(feature = "clamav"))]
+/// # {
+/// use acton_htmx::storage::scanning::ClamAvScanner;
+///
+/// let scanner = ClamAvScanner::new();
+/// # }
+/// ```
+#[cfg(not(feature = "clamav"))]
+#[derive(Debug, Clone, Default)]
+pub struct ClamAvScanner;
+
+#[cfg(not(feature = "clamav"))]
+impl ClamAvScanner {
+    /// Creates a new ClamAV scanner placeholder
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # #[cfg(not(feature = "clamav"))]
+    /// # {
+    /// use acton_htmx::storage::scanning::ClamAvScanner;
+    ///
+    /// let scanner = ClamAvScanner::new();
+    /// # }
+    /// ```
+    #[must_use]
+    pub const fn new() -> Self {
+        Self
+    }
+}
+
+#[cfg(not(feature = "clamav"))]
+#[async_trait]
+impl VirusScanner for ClamAvScanner {
+    async fn scan(&self, _file: &UploadedFile) -> StorageResult<ScanResult> {
+        Err(StorageError::Other(
+            "ClamAV support not enabled. Recompile with 'clamav' feature.".to_string(),
+        ))
+    }
+
+    fn name(&self) -> &'static str {
+        "ClamAV Scanner (disabled)"
+    }
+
+    async fn is_available(&self) -> bool {
         false
     }
 }
@@ -365,19 +615,75 @@ mod tests {
         assert_eq!(scanner.name(), "NoOp Scanner");
     }
 
+    #[cfg(feature = "clamav")]
     #[tokio::test]
-    async fn test_clamav_scanner_not_implemented() {
+    async fn test_clamav_scanner_tcp_not_available() {
+        let scanner = ClamAvScanner::new(ClamAvConnection::Tcp {
+            host: "nonexistent.invalid".to_string(),
+            port: 9999,
+        });
+        assert!(!scanner.is_available().await);
+    }
+
+    #[cfg(all(feature = "clamav", unix))]
+    #[tokio::test]
+    async fn test_clamav_scanner_socket_not_available() {
+        let scanner = ClamAvScanner::new(ClamAvConnection::Socket {
+            path: "/nonexistent/path.sock".into(),
+        });
+        assert!(!scanner.is_available().await);
+    }
+
+    #[cfg(feature = "clamav")]
+    #[tokio::test]
+    async fn test_clamav_scanner_default_tcp() {
+        let scanner = ClamAvScanner::default_tcp();
+        assert_eq!(scanner.name(), "ClamAV Scanner");
+    }
+
+    #[cfg(all(feature = "clamav", unix))]
+    #[tokio::test]
+    async fn test_clamav_scanner_default_socket() {
+        let scanner = ClamAvScanner::default_socket();
+        assert_eq!(scanner.name(), "ClamAV Scanner");
+    }
+
+    #[cfg(feature = "clamav")]
+    #[tokio::test]
+    async fn test_clamav_scanner_scan_connection_refused() {
+        let file = UploadedFile::new("test.txt", "text/plain", b"test data".to_vec());
+        let scanner = ClamAvScanner::new(ClamAvConnection::Tcp {
+            host: "localhost".to_string(),
+            port: 9999, // Non-existent port
+        });
+
+        let result = scanner.scan(&file).await;
+        // Should fail with connection error
+        assert!(result.is_err());
+        if let Err(StorageError::Other(msg)) = result {
+            assert!(msg.contains("ClamAV scan failed"));
+        }
+    }
+
+    #[cfg(not(feature = "clamav"))]
+    #[tokio::test]
+    async fn test_clamav_scanner_disabled() {
         let file = UploadedFile::new("test.txt", "text/plain", b"test data".to_vec());
         let scanner = ClamAvScanner::new();
 
         let result = scanner.scan(&file).await;
         assert!(result.is_err());
+        if let Err(StorageError::Other(msg)) = result {
+            assert!(msg.contains("not enabled"));
+        }
     }
 
+    #[cfg(not(feature = "clamav"))]
     #[tokio::test]
-    async fn test_clamav_scanner_not_available() {
+    async fn test_clamav_scanner_disabled_not_available() {
         let scanner = ClamAvScanner::new();
         assert!(!scanner.is_available().await);
+        assert_eq!(scanner.name(), "ClamAV Scanner (disabled)");
     }
 
     #[test]

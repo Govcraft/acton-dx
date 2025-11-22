@@ -54,6 +54,8 @@ pub use local::LocalFileStorage;
 pub use policy::{PolicyBuilder, UploadPolicy};
 pub use processing::ImageProcessor;
 pub use scanning::{ClamAvScanner, NoOpScanner, QuarantineScanner, ScanResult, VirusScanner};
+#[cfg(feature = "clamav")]
+pub use scanning::ClamAvConnection;
 pub use traits::FileStorage;
 pub use types::{StorageError, StorageResult, StoredFile, UploadedFile};
 pub use validation::MimeValidator;
