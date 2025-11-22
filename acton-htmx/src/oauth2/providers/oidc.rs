@@ -77,30 +77,33 @@ impl OidcProvider {
     /// # Errors
     ///
     /// Returns error if the configuration is invalid or if discovery fails
+    ///
+    /// # Panics
+    ///
+    /// This function should not panic as all unwrap() calls are guarded by is_some() checks
     pub async fn new(config: &ProviderConfig) -> Result<Self, OAuthError> {
         // For generic OIDC, we require either:
-        // 1. Discovery via issuer URL (auth_url field)
-        // 2. Manual configuration (auth_url, token_url, userinfo_url)
+        // 1. Manual configuration (all three URLs: auth_url, token_url, userinfo_url)
+        // 2. Discovery via issuer URL (only auth_url provided)
 
-        let (client, userinfo_url) = if let Some(issuer_url) = &config.auth_url {
-            // Try discovery first
-            Self::discover(config, issuer_url).await?
-        } else {
-            // Manual configuration
-            let auth_url = config
-                .auth_url
-                .as_ref()
-                .ok_or_else(|| OAuthError::Generic("auth_url required for OIDC".to_string()))?;
-            let token_url = config
-                .token_url
-                .as_ref()
-                .ok_or_else(|| OAuthError::Generic("token_url required for OIDC".to_string()))?;
-            let userinfo_url = config
-                .userinfo_url
-                .as_ref()
-                .ok_or_else(|| OAuthError::Generic("userinfo_url required for OIDC".to_string()))?;
+        let (client, userinfo_url) = if config.auth_url.is_some()
+            && config.token_url.is_some()
+            && config.userinfo_url.is_some()
+        {
+            // Manual configuration - all URLs provided
+            // SAFETY: These unwraps are safe because we just checked is_some() above
+            let auth_url = config.auth_url.as_ref().unwrap();
+            let token_url = config.token_url.as_ref().unwrap();
+            let userinfo_url = config.userinfo_url.as_ref().unwrap();
 
             Self::manual_config(config, auth_url, token_url, userinfo_url)?
+        } else if let Some(issuer_url) = &config.auth_url {
+            // Discovery - only issuer URL provided
+            Self::discover(config, issuer_url).await?
+        } else {
+            return Err(OAuthError::Generic(
+                "Either provide all URLs (auth_url, token_url, userinfo_url) for manual config, or just auth_url for discovery".to_string(),
+            ));
         };
 
         Ok(Self {

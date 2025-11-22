@@ -1,17 +1,17 @@
-{{% extends "base.html" %}}
+{{{{raw}}}}{% extends "base.html" %}
 
-{{% block title %}}{{model_name}} #{{{{{{ {{model_snake}}.id }}}}}}{{% endblock %}}
+{% block title %}{{{{/raw}}}}{{model_name}} #\{{{{ {{model_snake}}.id }}}\}}{{{{raw}}}}{% endblock %}
 
-{{% block content %}}
+{% block content %}{{{{/raw}}}}
 <!-- HTMX Content Start -->
 <div id="main-content">
     <div class="container mx-auto px-4 py-8">
         <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold">{{model_name}} #{{{{{{ {{model_snake}}.id }}}}}}</h1>
+            <h1 class="text-3xl font-bold">{{model_name}} #\{{{{ {{model_snake}}.id }}}\}}</h1>
             <div>
-                <a href="{{route_path}}/{{{{{{ {{model_snake}}.id }}}}}}/edit"
+                <a href="{{route_path}}/\{{{{ {{model_snake}}.id }}}\}}/edit"
                    class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded mr-2"
-                   hx-get="{{route_path}}/{{{{{{ {{model_snake}}.id }}}}}}/edit"
+                   hx-get="{{route_path}}/\{{{{ {{model_snake}}.id }}}\}}/edit"
                    hx-target="#main-content"
                    hx-push-url="true">
                     Edit
@@ -33,19 +33,19 @@
             {{#each fields}}
             <div class="mb-4">
                 <label class="block text-gray-700 text-sm font-bold mb-2">{{name}}:</label>
-                <p class="text-gray-900">{{{{{{ {{../model_snake}}.{{name}} }}}}}}</p>
+                <p class="text-gray-900">\{{{{ {{../model_snake}}.{{name}} }}}\}}</p>
             </div>
             {{/each}}
             <div class="mb-4">
                 <label class="block text-gray-700 text-sm font-bold mb-2">Created At:</label>
-                <p class="text-gray-900">{{{{{{ {{model_snake}}.created_at }}}}}}</p>
+                <p class="text-gray-900">\{{{{ {{model_snake}}.created_at }}}\}}</p>
             </div>
             <div class="mb-4">
                 <label class="block text-gray-700 text-sm font-bold mb-2">Updated At:</label>
-                <p class="text-gray-900">{{{{{{ {{model_snake}}.updated_at }}}}}}</p>
+                <p class="text-gray-900">\{{{{ {{model_snake}}.updated_at }}}\}}</p>
             </div>
         </div>
     </div>
 </div>
 <!-- HTMX Content End -->
-{{% endblock %}}
+{{{{raw}}}}{% endblock %}{{{{/raw}}}}

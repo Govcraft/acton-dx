@@ -1,22 +1,22 @@
-{% raw %}{% extends "base.html" %}
+{{{{raw}}}}{% extends "base.html" %}
 
-{% block title %}{% if {{model_snake}} %}Edit{{else}}New{% endif %} {{model_name}}{% endblock %}
+{% block title %}{% if {{{{/raw}}}}{{model_snake}}{{{{raw}}}} %}Edit{% else %}New{% endif %} {{{{/raw}}}}{{model_name}}{{{{raw}}}}{% endblock %}
 
-{% block content %}
+{% block content %}{{{{/raw}}}}
 <!-- HTMX Content Start -->
 <div id="main-content">
     <div class="container mx-auto px-4 py-8">
-        <h1 class="text-3xl font-bold mb-6">{% if {{model_snake}} %}Edit{{else}}New{% endif %} {{model_name}}</h1>
+        <h1 class="text-3xl font-bold mb-6">{{{{raw}}}}{% if {{{{/raw}}}}{{model_snake}}{{{{raw}}}} %}Edit{% else %}New{% endif %} {{{{/raw}}}}{{model_name}}{{{{raw}}}}{% endblock %}</h1>
 
         <!-- Flash Messages -->
         <div id="flash-messages" class="mb-4"></div>
 
         <div class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
-            <form {% if {{model_snake}} %}
-                      hx-put="{{route_path}}/{{ {{model_snake}}.id }}"
+            <form {% if {{{{/raw}}}}{{model_snake}}{{{{raw}}}} %}
+                      hx-put="{{{{/raw}}}}{{route_path}}{{{{raw}}}}/\{{ {{{{/raw}}}}{{model_snake}}{{{{raw}}}}.id }}"
                   {% else %}
-                      hx-post="{{route_path}}"
-                  {% endif %}
+                      hx-post="{{{{/raw}}}}{{route_path}}{{{{raw}}}}"
+                  {% endif %}{{{{/raw}}}}
                   hx-target="#main-content"
                   hx-push-url="true">
 
@@ -29,35 +29,35 @@
                     <input type="text"
                            name="{{name}}"
                            id="{{name}}"
-                           value="{% if {{../model_snake}} %}{{ {{../model_snake}}.{{name}} }}{% endif %}"
-                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline {% if errors %}{% if errors.{{name}} %}border-red-500{% endif %}{% endif %}"
+                           value="{{{{raw}}}}{% if {{{{/raw}}}}{{../model_snake}}{{{{raw}}}} %}\{{ {{{{/raw}}}}{{../model_snake}}{{{{raw}}}}.{{{{/raw}}}}{{name}}{{{{raw}}}} }}{% endif %}{{{{/raw}}}}"
+                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline {{{{raw}}}}{% if errors %}{% if errors.{{{{/raw}}}}{{name}}{{{{raw}}}} %}border-red-500{% endif %}{% endif %}{{{{/raw}}}}"
                            {{#unless optional}}required{{/unless}}>
                     {{else if (eq rust_type "bool")}}
                     <input type="checkbox"
                            name="{{name}}"
                            id="{{name}}"
-                           {% if {{../model_snake}} %}{% if {{../model_snake}}.{{name}} %}checked{% endif %}{% endif %}
+                           {{{{raw}}}}{% if {{{{/raw}}}}{{../model_snake}}{{{{raw}}}} %}{% if {{{{/raw}}}}{{../model_snake}}{{{{raw}}}}.{{{{/raw}}}}{{name}}{{{{raw}}}} %}checked{% endif %}{% endif %}{{{{/raw}}}}
                            class="mr-2 leading-tight">
                     {{else}}
                     <input type="text"
                            name="{{name}}"
                            id="{{name}}"
-                           value="{% if {{../model_snake}} %}{{ {{../model_snake}}.{{name}} }}{% endif %}"
-                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline {% if errors %}{% if errors.{{name}} %}border-red-500{% endif %}{% endif %}"
+                           value="{{{{raw}}}}{% if {{{{/raw}}}}{{../model_snake}}{{{{raw}}}} %}\{{ {{{{/raw}}}}{{../model_snake}}{{{{raw}}}}.{{{{/raw}}}}{{name}}{{{{raw}}}} }}{% endif %}{{{{/raw}}}}"
+                           class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline {{{{raw}}}}{% if errors %}{% if errors.{{{{/raw}}}}{{name}}{{{{raw}}}} %}border-red-500{% endif %}{% endif %}{{{{/raw}}}}"
                            {{#unless optional}}required{{/unless}}>
                     {{/if}}
-                    {% if errors %}
-                        {% if let Some(field_errors) = errors.{{name}} %}
-                            <p class="text-red-500 text-xs italic mt-1">{{ field_errors[0] }}</p>
+                    {{{{raw}}}}{% if errors %}
+                        {% if let Some(field_errors) = errors.{{{{/raw}}}}{{name}}{{{{raw}}}} %}
+                            <p class="text-red-500 text-xs italic mt-1">\{{ field_errors[0] }}</p>
                         {% endif %}
-                    {% endif %}
+                    {% endif %}{{{{/raw}}}}
                 </div>
                 {{/each}}
 
                 <div class="flex items-center justify-between">
                     <button type="submit"
                             class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                        {% if {{model_snake}} %}Update{% else %}Create{% endif %} {{model_name}}
+                        {{{{raw}}}}{% if {{{{/raw}}}}{{model_snake}}{{{{raw}}}} %}Update{% else %}Create{% endif %} {{{{/raw}}}}{{model_name}}
                     </button>
                     <a href="{{route_path}}"
                        class="inline-block align-baseline font-bold text-sm text-blue-500 hover:text-blue-800"
@@ -72,5 +72,4 @@
     </div>
 </div>
 <!-- HTMX Content End -->
-{% endblock %}
-{% endraw %}
+{{{{raw}}}}{% endblock %}{{{{/raw}}}}

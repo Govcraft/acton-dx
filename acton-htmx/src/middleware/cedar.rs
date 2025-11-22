@@ -759,8 +759,8 @@ fn normalize_path_generic(path: &str) -> String {
     let path = uuid_pattern.replace_all(path, "{id}");
 
     // Replace numeric IDs at end of path segments
-    let numeric_pattern = regex::Regex::new(r"/(\d+)(?:/|$)").expect("Invalid regex");
-    let path = numeric_pattern.replace_all(&path, "/{id}");
+    let numeric_pattern = regex::Regex::new(r"/(\d+)(/|$)").expect("Invalid regex");
+    let path = numeric_pattern.replace_all(&path, "/{id}$2");
 
     path.to_string()
 }
