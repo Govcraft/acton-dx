@@ -169,9 +169,10 @@ impl SmtpBackend {
         let subject = email.subject.as_ref().ok_or(EmailError::NoSubject)?;
         builder = builder.subject(subject);
 
-        // Note: Custom headers would require using specific lettre header types
-        // For now, we skip custom headers as they require more complex implementation
-        // Future enhancement: Add support for common headers like X-Priority
+        // Note: Custom headers (X-Priority, X-Campaign-ID, etc.) are not currently supported.
+        // This is intentional to keep the API simple and backend-agnostic.
+        // See docs/guides/09-email.md "Custom Headers" section for workarounds.
+        // Planned for Phase 3 if there's sufficient user demand.
 
         // Build multipart message if we have both HTML and text
         let message = if let (Some(html), Some(text)) = (&email.html, &email.text) {
