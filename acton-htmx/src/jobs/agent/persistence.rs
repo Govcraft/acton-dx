@@ -10,16 +10,14 @@ use redis::AsyncCommands;
 
 /// Message to persist a job to Redis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)] // Will be used when Redis handlers are enabled
-pub(super) struct PersistJob {
+pub struct PersistJob {
     /// The job to persist.
     pub job: QueuedJob,
 }
 
 /// Message to mark a job as completed in Redis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)] // Will be used when Redis handlers are enabled
-pub(super) struct MarkJobCompleted {
+pub struct MarkJobCompleted {
     /// Job ID.
     pub id: JobId,
     /// Execution time in milliseconds.
@@ -28,8 +26,7 @@ pub(super) struct MarkJobCompleted {
 
 /// Message to mark a job as failed in Redis.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)] // Will be used when Redis handlers are enabled
-pub(super) struct MarkJobFailed {
+pub struct MarkJobFailed {
     /// Job ID.
     pub id: JobId,
     /// Error message.
@@ -40,8 +37,7 @@ pub(super) struct MarkJobFailed {
 
 /// Message to move a job to the dead letter queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[allow(dead_code)] // Will be used when Redis handlers are enabled
-pub(super) struct MoveToDeadLetterQueue {
+pub struct MoveToDeadLetterQueue {
     /// Job ID.
     pub id: JobId,
     /// Job data.

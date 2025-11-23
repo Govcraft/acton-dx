@@ -9,7 +9,7 @@ use std::time::Duration;
 
 /// A job in the queue.
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct QueuedJob {
+pub struct QueuedJob {
     /// Unique job identifier.
     pub id: JobId,
     /// Job type name.

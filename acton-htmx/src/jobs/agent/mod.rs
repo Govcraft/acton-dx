@@ -3,9 +3,13 @@
 pub(crate) mod messages;
 pub(crate) mod persistence;
 pub(crate) mod queue;
+#[cfg(feature = "redis")]
+pub mod redis_agent;
 pub mod scheduled;
 
 pub use messages::{EnqueueJob, JobEnqueued, JobMetrics};
+#[cfg(feature = "redis")]
+pub use redis_agent::RedisPersistenceAgent;
 pub use scheduled::{ScheduledJobAgent, ScheduledJobEntry, ScheduledJobMessage, ScheduledJobResponse, start_scheduler_loop};
 
 use super::{JobContext, JobId, JobStatus};
@@ -26,13 +30,12 @@ type JobAgentBuilder = ManagedAgent<Idle, JobAgent>;
 ///
 /// Manages a queue of background jobs with:
 /// - Priority-based execution
-/// - Redis persistence (async via act_on)
+/// - Redis persistence (via dedicated `RedisPersistenceAgent`)
 /// - Automatic retry with exponential backoff
 /// - Dead letter queue for failed jobs
 /// - Graceful shutdown
 /// - Service access via [`JobContext`](crate::jobs::JobContext)
 #[derive(Clone)]
-#[allow(dead_code)] // Redis field will be used when handlers are enabled
 pub struct JobAgent {
     /// In-memory priority queue.
     queue: Arc<RwLock<JobQueue>>,
@@ -44,9 +47,9 @@ pub struct JobAgent {
     ///
     /// Provides jobs with access to email sender, database pool, file storage, etc.
     context: Arc<JobContext>,
-    /// Redis connection (optional, for persistence).
+    /// Handle to Redis persistence agent (optional, for persistence).
     #[cfg(feature = "redis")]
-    redis: Option<Arc<RwLock<redis::aio::MultiplexedConnection>>>,
+    redis_persistence: Option<AgentHandle>,
 }
 
 impl std::fmt::Debug for JobAgent {
@@ -59,7 +62,7 @@ impl std::fmt::Debug for JobAgent {
             .field("context", &self.context);
 
         #[cfg(feature = "redis")]
-        debug_struct.field("redis", &self.redis.is_some());
+        debug_struct.field("redis_persistence", &self.redis_persistence.is_some());
 
         debug_struct.finish()
     }
@@ -75,6 +78,7 @@ impl JobAgent {
     /// Create a new job agent without Redis or services.
     ///
     /// Use [`with_context`](Self::with_context) to provide services.
+    /// Use [`with_persistence`](Self::with_persistence) to enable Redis persistence.
     #[must_use]
     pub fn new() -> Self {
         Self {
@@ -83,7 +87,7 @@ impl JobAgent {
             metrics: Arc::new(RwLock::new(JobMetrics::default())),
             context: Arc::new(JobContext::new()),
             #[cfg(feature = "redis")]
-            redis: None,
+            redis_persistence: None,
         }
     }
 
@@ -99,20 +103,48 @@ impl JobAgent {
             metrics: Arc::new(RwLock::new(JobMetrics::default())),
             context: Arc::new(context),
             #[cfg(feature = "redis")]
-            redis: None,
+            redis_persistence: None,
         }
     }
 
     /// Create a new job agent with Redis persistence.
+    ///
+    /// # Arguments
+    ///
+    /// * `context` - Job execution context with services
+    /// * `redis_persistence` - Handle to Redis persistence agent
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use acton_reactive::prelude::*;
+    /// use acton_htmx::jobs::{JobAgent, JobContext};
+    /// use acton_htmx::jobs::agent::RedisPersistenceAgent;
+    ///
+    /// # async fn example() -> anyhow::Result<()> {
+    /// let mut runtime = AgentRuntime::new().await?;
+    ///
+    /// // Spawn Redis persistence agent
+    /// let redis_handle = RedisPersistenceAgent::spawn(
+    ///     "redis://localhost:6379",
+    ///     &mut runtime
+    /// ).await?;
+    ///
+    /// // Create job agent with persistence
+    /// let context = JobContext::new();
+    /// let job_agent = JobAgent::with_persistence(context, redis_handle);
+    /// # Ok(())
+    /// # }
+    /// ```
     #[cfg(feature = "redis")]
     #[must_use]
-    pub fn with_redis(redis: redis::aio::MultiplexedConnection) -> Self {
+    pub fn with_persistence(context: JobContext, redis_persistence: AgentHandle) -> Self {
         Self {
             queue: Arc::new(RwLock::new(JobQueue::new(10_000))),
             running: Arc::new(RwLock::new(HashMap::new())),
             metrics: Arc::new(RwLock::new(JobMetrics::default())),
-            context: Arc::new(JobContext::new()),
-            redis: Some(Arc::new(RwLock::new(redis))),
+            context: Arc::new(context),
+            redis_persistence: Some(redis_persistence),
         }
     }
 
@@ -163,7 +195,11 @@ impl JobAgent {
                 };
 
                 // Add to in-memory queue
-                let result = agent.model.queue.write().enqueue(queued_job);
+                let result = agent.model.queue.write().enqueue(queued_job.clone());
+
+                // Clone Redis persistence handle if available
+                #[cfg(feature = "redis")]
+                let redis_handle = agent.model.redis_persistence.clone();
 
                 match result {
                     Ok(()) => {
@@ -172,6 +208,13 @@ impl JobAgent {
                         // Send response via reply_envelope
                         let response = JobEnqueued { id: msg.id };
                         AgentReply::from_async(async move {
+                            // Persist to Redis if enabled (fire-and-forget)
+                            #[cfg(feature = "redis")]
+                            if let Some(redis) = redis_handle {
+                                use persistence::PersistJob;
+                                redis.send(PersistJob { job: queued_job }).await;
+                            }
+
                             let _: () = reply_envelope.send(response).await;
                         })
                     }
@@ -217,16 +260,8 @@ impl JobAgent {
                 })
             });
 
-        // Redis persistence handlers are available when the redis feature is enabled
-        // but require additional Send + Sync trait bounds that need to be resolved.
-        // The architecture is in place - handlers will be uncommented when redis crate
-        // compatibility is verified.
-        #[cfg(feature = "redis")]
-        {
-            // TODO: Enable Redis handlers once Send + Sync bounds are resolved
-            // See: https://github.com/redis-rs/redis-rs/issues/...
-            let _ = builder; // Suppress unused warning
-        }
+        // Redis persistence is now handled by RedisPersistenceAgent (separate agent)
+        // Messages are sent via fire-and-forget pattern when feature is enabled
 
         Ok(builder.start().await)
     }
