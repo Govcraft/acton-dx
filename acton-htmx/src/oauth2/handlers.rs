@@ -15,7 +15,7 @@ use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::{
-    auth::Session,
+    auth::{password::hash_password, Session},
     error::ActonHtmxError,
     htmx::{HxRedirect, HxResponseTrigger},
     oauth2::{
@@ -391,11 +391,15 @@ async fn create_user_from_oauth(pool: &PgPool, email: &str) -> Result<i64, Acton
         .map(char::from)
         .collect();
 
+    // Hash the random password using Argon2id for security
+    let password_hash = hash_password(&random_password)
+        .map_err(|e| ActonHtmxError::ServerError(format!("Failed to hash password: {e}")))?;
+
     let user_id = sqlx::query_scalar::<_, i64>(
         "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id",
     )
     .bind(email)
-    .bind(&random_password) // TODO: Use actual password hashing
+    .bind(&password_hash)
     .fetch_one(pool)
     .await?;
 
