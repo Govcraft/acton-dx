@@ -170,6 +170,48 @@ impl Entity {
         Self::find().all(db).await
     }
 
+    /// Search {{plural_title}} by query string
+    ///
+    /// Performs case-insensitive substring search across all text fields.
+    /// Returns empty vector if query is empty or only whitespace.
+    ///
+    /// # Arguments
+    ///
+    /// * `db` - Database connection
+    /// * `query` - Search query string
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// let results = Entity::search(&db, \"rust\").await?;
+    /// ```
+    pub async fn search(db: &DatabaseConnection, query: &str) -> Result<Vec<Model>, DbErr> {
+        let query = query.trim();
+
+        // Return empty vector for empty queries
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        // Build search pattern for LIKE query
+        let search_pattern = format!(\"%{query}%\");
+
+        // Build condition to search across all string fields
+        let mut condition = Condition::any();
+        {{#each fields}}
+        {{#if (eq rust_type \"String\")}}
+        condition = condition.add(Column::{{pascal_case name}}.like(&search_pattern));
+        {{else if (eq rust_type \"Option<String>\")}}
+        condition = condition.add(Column::{{pascal_case name}}.like(&search_pattern));
+        {{/if}}
+        {{/each}}
+
+        Self::find()
+            .filter(condition)
+            .all(db)
+            .await
+    }
+
     /// Find {{model_name}} by ID
     pub async fn find_by_id(db: &DatabaseConnection, id: i64) -> Result<Option<Model>, DbErr> {
         Self::find_by_id(id).one(db).await
@@ -422,12 +464,14 @@ pub async fn delete(
 }
 
 /// Live search endpoint
+///
+/// Performs real-time search across {{model_name}} text fields.
+/// Returns filtered rows as HTML partial for HTMX swap.
 pub async fn search(
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
 ) -> Result<Response, HandlerError> {
-    // TODO: Implement search functionality with your preferred method
-    let {{model_snake}}s = {{model_snake}}::Entity::find_all(&state.db).await?;
+    let {{model_snake}}s = {{model_snake}}::Entity::search(&state.db, &params.q).await?;
 
     let template = {{model_name}}RowsTemplate { {{model_snake}}s };
 

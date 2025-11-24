@@ -162,12 +162,14 @@ pub async fn delete(
 }
 
 /// Live search endpoint
+///
+/// Performs real-time search across {{model_name}} text fields.
+/// Returns filtered rows as HTML partial for HTMX swap.
 pub async fn search(
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
 ) -> Result<Response, HandlerError> {
-    // TODO: Implement search functionality with your preferred method
-    let {{model_snake}}s = {{model_snake}}::Entity::find_all(&state.db).await?;
+    let {{model_snake}}s = {{model_snake}}::Entity::search(&state.db, &params.q).await?;
 
     let template = {{model_name}}RowsTemplate { {{model_snake}}s };
 
