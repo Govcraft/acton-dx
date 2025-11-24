@@ -37,9 +37,45 @@ use crate::auth::{Session, User, UserError};
 use crate::state::ActonHtmxState;
 use axum::{
     extract::{FromRef, FromRequestParts},
-    http::{request::Parts, StatusCode},
+    http::{header::HeaderMap, request::Parts, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
+
+/// Check if the request is an HTMX request
+///
+/// HTMX requests include the `HX-Request: true` header. This helper function
+/// provides a single source of truth for HTMX detection across all extractors
+/// and middleware.
+///
+/// # Arguments
+///
+/// * `headers` - The request headers to check
+///
+/// # Returns
+///
+/// `true` if the request is from HTMX, `false` otherwise
+///
+/// # Example
+///
+/// ```rust
+/// use axum::http::HeaderMap;
+///
+/// fn handle_request(headers: &HeaderMap) {
+///     if is_htmx_request(headers) {
+///         // Return HTMX-specific response
+///     } else {
+///         // Return regular response
+///     }
+/// }
+/// ```
+#[must_use]
+#[inline]
+fn is_htmx_request(headers: &HeaderMap) -> bool {
+    headers
+        .get("HX-Request")
+        .and_then(|v| v.to_str().ok())
+        == Some("true")
+}
 
 /// Authenticated user extractor for protected routes
 ///
@@ -73,11 +109,7 @@ where
         state: &S,
     ) -> Result<Self, Self::Rejection> {
         // Check if this is an HTMX request
-        let is_htmx = parts
-            .headers
-            .get("HX-Request")
-            .and_then(|v| v.to_str().ok())
-            == Some("true");
+        let is_htmx = is_htmx_request(&parts.headers);
 
         // Get session from request extensions
         let session = parts.extensions.get::<Session>().cloned().ok_or(

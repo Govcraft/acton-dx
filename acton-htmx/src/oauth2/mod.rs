@@ -104,6 +104,7 @@
 
 pub mod agent;
 pub mod handlers;
+pub mod http;
 pub mod models;
 pub mod providers;
 pub mod types;

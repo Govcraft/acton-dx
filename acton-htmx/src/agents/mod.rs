@@ -4,6 +4,7 @@
 //! session management, CSRF protection, and real-time features.
 
 pub mod csrf_manager;
+pub mod request_reply;
 pub mod session_manager;
 
 // Re-export public types for use by middleware and extractors

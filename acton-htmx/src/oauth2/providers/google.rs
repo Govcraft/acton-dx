@@ -10,6 +10,7 @@ use oauth2::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::oauth2::http::async_http_client;
 use crate::oauth2::types::{OAuthError, OAuthToken, OAuthUserInfo, ProviderConfig};
 
 // BasicClient with auth and token endpoints set
@@ -20,46 +21,6 @@ type ConfiguredClient = BasicClient<
     EndpointNotSet,       // HasRevocationUrl
     EndpointSet,          // HasTokenUrl
 >;
-
-/// Async HTTP client for OAuth2 requests
-async fn async_http_client(
-    request: oauth2::HttpRequest,
-) -> Result<oauth2::HttpResponse, reqwest::Error> {
-    let client = reqwest::Client::builder()
-        .redirect(reqwest::redirect::Policy::none())
-        .build()?;
-
-    let method = request.method().clone();
-    let url = request.uri().to_string();
-    let headers = request.headers().clone();
-    let body = request.into_body();
-
-    let mut request_builder = client
-        .request(method, &url)
-        .body(body);
-
-    for (name, value) in &headers {
-        request_builder = request_builder.header(name.as_str(), value.as_bytes());
-    }
-
-    let response = request_builder
-        .send()
-        .await?;
-
-    let status_code = response.status();
-    let response_headers = response.headers().to_owned();
-    let response_body = response
-        .bytes()
-        .await?
-        .to_vec();
-
-    let mut builder = http::Response::builder().status(status_code);
-    for (name, value) in &response_headers {
-        builder = builder.header(name, value);
-    }
-    // This should never fail as we're building with valid components
-    Ok(builder.body(response_body).expect("Failed to build HTTP response"))
-}
 
 /// Google OAuth2 provider
 pub struct GoogleProvider {
