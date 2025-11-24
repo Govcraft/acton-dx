@@ -355,6 +355,93 @@ impl ActonHtmxState {
     pub fn set_redis_pool(&mut self, pool: RedisPool) {
         self.redis_pool = Some(pool);
     }
+
+    // ========================================================================
+    // Job Agent Helper Methods (Web Handler Pattern)
+    // ========================================================================
+
+    /// Get job metrics with timeout.
+    ///
+    /// Convenience method that handles the oneshot channel pattern for
+    /// querying job metrics from the `JobAgent`.
+    ///
+    /// Uses a 100ms timeout to prevent handlers from hanging if the agent
+    /// is slow or stopped.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Agent doesn't respond within timeout
+    /// - Response channel is closed (agent stopped)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// async fn handler(State(state): State<ActonHtmxState>) -> Result<Response> {
+    ///     let metrics = state.get_job_metrics().await
+    ///         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ///
+    ///     Ok(Json(metrics).into_response())
+    /// }
+    /// ```
+    pub async fn get_job_metrics(&self) -> Result<crate::jobs::agent::JobMetrics, anyhow::Error> {
+        use acton_reactive::prelude::AgentHandleInterface;
+        use crate::jobs::agent::GetMetricsRequest;
+        use std::time::Duration;
+
+        let (request, rx) = GetMetricsRequest::new();
+        self.job_agent().send(request).await;
+
+        let timeout = Duration::from_millis(100);
+        Ok(tokio::time::timeout(timeout, rx).await??)
+    }
+
+    /// Get job status with timeout.
+    ///
+    /// Convenience method that handles the oneshot channel pattern for
+    /// querying job status from the `JobAgent`.
+    ///
+    /// Uses a 100ms timeout to prevent handlers from hanging if the agent
+    /// is slow or stopped.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if:
+    /// - Agent doesn't respond within timeout
+    /// - Response channel is closed (agent stopped)
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use acton_htmx::jobs::JobId;
+    ///
+    /// async fn handler(
+    ///     State(state): State<ActonHtmxState>,
+    ///     Path(job_id): Path<JobId>,
+    /// ) -> Result<Response> {
+    ///     let status = state.get_job_status(job_id).await
+    ///         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    ///
+    ///     match status {
+    ///         Some(status) => Ok(Json(status).into_response()),
+    ///         None => Err(StatusCode::NOT_FOUND),
+    ///     }
+    /// }
+    /// ```
+    pub async fn get_job_status(
+        &self,
+        id: crate::jobs::JobId,
+    ) -> Result<Option<crate::jobs::JobStatus>, anyhow::Error> {
+        use acton_reactive::prelude::AgentHandleInterface;
+        use crate::jobs::agent::GetJobStatusRequest;
+        use std::time::Duration;
+
+        let (request, rx) = GetJobStatusRequest::new(id);
+        self.job_agent().send(request).await;
+
+        let timeout = Duration::from_millis(100);
+        Ok(tokio::time::timeout(timeout, rx).await??)
+    }
 }
 
 #[cfg(test)]

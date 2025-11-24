@@ -7,7 +7,9 @@ pub(crate) mod queue;
 pub mod redis_agent;
 pub mod scheduled;
 
-pub use messages::{EnqueueJob, JobEnqueued, JobMetrics};
+pub use messages::{
+    EnqueueJob, GetJobStatusRequest, GetMetricsRequest, JobEnqueued, JobMetrics, ResponseChannel,
+};
 #[cfg(feature = "redis")]
 pub use redis_agent::RedisPersistenceAgent;
 pub use scheduled::{ScheduledJobAgent, ScheduledJobEntry, ScheduledJobMessage, ScheduledJobResponse, start_scheduler_loop};
@@ -250,7 +252,7 @@ impl JobAgent {
                     let _: () = reply_envelope.send(response).await;
                 })
             })
-            // Get metrics (read-only with reply_envelope)
+            // Get metrics (read-only with reply_envelope - agent-to-agent pattern)
             .act_on::<GetMetrics>(|agent, envelope| {
                 let reply_envelope = envelope.reply_envelope();
                 let metrics = agent.model.metrics.read().clone();
@@ -258,12 +260,66 @@ impl JobAgent {
                 Box::pin(async move {
                     let _: () = reply_envelope.send(metrics).await;
                 })
+            })
+            // Get metrics (web handler pattern with oneshot channel)
+            .act_on::<GetMetricsRequest>(|agent, envelope| {
+                let response_tx = envelope.message().response_tx.clone();
+                let metrics = agent.model.metrics.read().clone();
+
+                Box::pin(async move {
+                    Self::send_metrics_response(response_tx, metrics).await;
+                })
+            })
+            // Get job status (web handler pattern with oneshot channel)
+            .act_on::<GetJobStatusRequest>(|agent, envelope| {
+                let msg = envelope.message();
+                let response_tx = msg.response_tx.clone();
+                let job_id = msg.id;
+
+                let status = agent.model.running.read().get(&job_id).cloned()
+                    .or_else(|| {
+                        if agent.model.queue.read().contains(&job_id) {
+                            Some(JobStatus::Pending)
+                        } else {
+                            None
+                        }
+                    });
+
+                Box::pin(async move {
+                    Self::send_status_response(response_tx, status).await;
+                })
             });
 
         // Redis persistence is now handled by RedisPersistenceAgent (separate agent)
         // Messages are sent via fire-and-forget pattern when feature is enabled
 
         Ok(builder.start().await)
+    }
+
+    /// Send metrics response via oneshot channel.
+    ///
+    /// Helper method for web handler pattern responses.
+    async fn send_metrics_response(
+        response_tx: ResponseChannel<JobMetrics>,
+        metrics: JobMetrics,
+    ) {
+        let mut guard = response_tx.lock().await;
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(metrics);
+        }
+    }
+
+    /// Send job status response via oneshot channel.
+    ///
+    /// Helper method for web handler pattern responses.
+    async fn send_status_response(
+        response_tx: ResponseChannel<Option<JobStatus>>,
+        status: Option<JobStatus>,
+    ) {
+        let mut guard = response_tx.lock().await;
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(status);
+        }
     }
 }
 

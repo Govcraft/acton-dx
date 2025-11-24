@@ -2,7 +2,15 @@
 
 use crate::jobs::{JobId, JobStatus};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::{oneshot, Mutex};
+
+/// Response channel type for web handler pattern.
+///
+/// Wraps `oneshot::Sender` in `Arc<Mutex<Option<T>>>` to satisfy
+/// `Clone + Debug` requirements for acton-reactive messages.
+pub type ResponseChannel<T> = Arc<Mutex<Option<oneshot::Sender<T>>>>;
 
 /// Enqueue a new job for processing.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,14 +36,18 @@ pub struct JobEnqueued {
     pub id: JobId,
 }
 
-/// Get the status of a job.
+/// Get the status of a job (agent-to-agent pattern).
+///
+/// **Deprecated**: Use [`GetJobStatusRequest`] for web handlers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetJobStatus {
     /// Job ID to query.
     pub id: JobId,
 }
 
-/// Response containing job status.
+/// Response containing job status (agent-to-agent pattern).
+///
+/// **Deprecated**: Use [`GetJobStatusRequest`] for web handlers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct JobStatusResponse {
     /// Job ID.
@@ -44,7 +56,9 @@ pub struct JobStatusResponse {
     pub status: Option<JobStatus>,
 }
 
-/// Request job metrics.
+/// Request job metrics (agent-to-agent pattern).
+///
+/// **Deprecated**: Use [`GetMetricsRequest`] for web handlers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GetMetrics;
 
@@ -134,3 +148,97 @@ pub(super) struct ProcessJobs;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[allow(dead_code)] // Will be used in Week 5 for cleanup scheduling
 pub(super) struct CleanupExpiredJobs;
+
+// ============================================================================
+// Web Handler Pattern Messages (HTTP handler to agent communication)
+// ============================================================================
+
+/// Request job metrics (web handler pattern).
+///
+/// Used by HTTP handlers to query job statistics. Uses oneshot channel
+/// for response to avoid blocking the handler.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use acton_htmx::jobs::agent::messages::GetMetricsRequest;
+/// use std::time::Duration;
+///
+/// async fn handler(State(state): State<ActonHtmxState>) -> Result<Response> {
+///     let (request, rx) = GetMetricsRequest::new();
+///     state.job_agent().send(request).await;
+///
+///     let timeout = Duration::from_millis(100);
+///     let metrics = tokio::time::timeout(timeout, rx).await??;
+///
+///     Ok(Json(metrics).into_response())
+/// }
+/// ```
+#[derive(Clone, Debug)]
+pub struct GetMetricsRequest {
+    /// Response channel for metrics.
+    pub response_tx: ResponseChannel<JobMetrics>,
+}
+
+impl GetMetricsRequest {
+    /// Create a new metrics request with response channel.
+    ///
+    /// Returns a tuple of (request, receiver) where the request should be
+    /// sent to the agent and the receiver awaited for the response.
+    #[must_use]
+    pub fn new() -> (Self, oneshot::Receiver<JobMetrics>) {
+        let (tx, rx) = oneshot::channel();
+        let request = Self {
+            response_tx: Arc::new(Mutex::new(Some(tx))),
+        };
+        (request, rx)
+    }
+}
+
+/// Request job status (web handler pattern).
+///
+/// Used by HTTP handlers to query the status of a specific job.
+/// Uses oneshot channel for response to avoid blocking the handler.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use acton_htmx::jobs::agent::messages::GetJobStatusRequest;
+/// use std::time::Duration;
+///
+/// async fn handler(
+///     State(state): State<ActonHtmxState>,
+///     Path(job_id): Path<JobId>,
+/// ) -> Result<Response> {
+///     let (request, rx) = GetJobStatusRequest::new(job_id);
+///     state.job_agent().send(request).await;
+///
+///     let timeout = Duration::from_millis(100);
+///     let status = tokio::time::timeout(timeout, rx).await??;
+///
+///     Ok(Json(status).into_response())
+/// }
+/// ```
+#[derive(Clone, Debug)]
+pub struct GetJobStatusRequest {
+    /// Job ID to query.
+    pub id: JobId,
+    /// Response channel for status.
+    pub response_tx: ResponseChannel<Option<JobStatus>>,
+}
+
+impl GetJobStatusRequest {
+    /// Create a new job status request with response channel.
+    ///
+    /// Returns a tuple of (request, receiver) where the request should be
+    /// sent to the agent and the receiver awaited for the response.
+    #[must_use]
+    pub fn new(id: JobId) -> (Self, oneshot::Receiver<Option<JobStatus>>) {
+        let (tx, rx) = oneshot::channel();
+        let request = Self {
+            id,
+            response_tx: Arc::new(Mutex::new(Some(tx))),
+        };
+        (request, rx)
+    }
+}

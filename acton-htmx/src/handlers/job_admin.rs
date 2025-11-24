@@ -3,6 +3,14 @@
 //! This module provides HTTP handlers for managing background jobs.
 //! These handlers should be protected with admin-only authorization.
 //!
+//! # Architecture
+//!
+//! Uses acton-reactive web handler pattern with oneshot channels for
+//! request-reply communication between HTTP handlers and the `JobAgent`.
+//!
+//! See `.claude/acton-reactive-research-20251124-message-patterns.md` for
+//! detailed documentation on the message passing patterns.
+//!
 //! # Example Usage
 //!
 //! ```rust,ignore
@@ -14,6 +22,7 @@
 //!     .route("/admin/jobs/stats", get(job_admin::job_stats));
 //! ```
 
+use acton_reactive::prelude::AgentHandleInterface;
 use axum::{
     extract::State,
     http::StatusCode,
@@ -21,8 +30,10 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 
 use crate::auth::{user::User, Authenticated};
+use crate::jobs::agent::GetMetricsRequest;
 use crate::state::ActonHtmxState;
 
 /// Response for job list endpoint
@@ -133,6 +144,10 @@ pub async fn list_jobs(
 /// Returns comprehensive statistics about the job queue and execution metrics.
 /// Requires admin role.
 ///
+/// Uses acton-reactive web handler pattern with oneshot channel for
+/// communication with `JobAgent`. Includes 100ms timeout to prevent handler
+/// from hanging if the agent is slow or stopped.
+///
 /// # Example
 ///
 /// ```bash
@@ -155,6 +170,13 @@ pub async fn list_jobs(
 ///   "message": "Statistics retrieved successfully"
 /// }
 /// ```
+///
+/// # Errors
+///
+/// Returns:
+/// - `403 FORBIDDEN` if user is not an admin
+/// - `408 REQUEST_TIMEOUT` if agent doesn't respond within 100ms
+/// - `500 INTERNAL_SERVER_ERROR` if agent response channel fails
 #[allow(clippy::cast_precision_loss)] // Acceptable for metrics
 pub async fn job_stats(
     State(state): State<ActonHtmxState>,
@@ -169,37 +191,53 @@ pub async fn job_stats(
         return Err(StatusCode::FORBIDDEN);
     }
 
-    // Get metrics from job agent
-    let _job_agent = state.job_agent();
+    // Create request with response channel (web handler pattern)
+    let (request, rx) = GetMetricsRequest::new();
 
-    // TODO: Implement message-based communication with JobAgent
-    // For now, return placeholder metrics
-    // This requires making GetMetrics public and implementing proper message handling
+    // Send message to JobAgent (fire-and-forget from handler perspective)
+    state.job_agent().send(request).await;
 
-    // Placeholder metrics for initial implementation
-    let total_processed = 0_u64;
+    // Await response with 100ms timeout
+    let timeout = Duration::from_millis(100);
+    let metrics = tokio::time::timeout(timeout, rx)
+        .await
+        .map_err(|_| {
+            tracing::error!("Job metrics retrieval timeout");
+            StatusCode::REQUEST_TIMEOUT
+        })?
+        .map_err(|_| {
+            tracing::error!("Job metrics channel error");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Calculate success rate from metrics
+    let total_processed = metrics.jobs_completed + metrics.jobs_failed;
     let success_rate = if total_processed > 0 {
-        0.0
+        (metrics.jobs_completed as f64 / total_processed as f64) * 100.0
     } else {
         100.0
     };
 
+    // Build response from real metrics
     let response = JobStatsResponse {
-        total_enqueued: 0,
-        running: 0,
-        pending: 0,
-        completed: 0,
-        failed: 0,
-        dead_letter: 0,
-        avg_execution_ms: 0.0,
-        p95_execution_ms: 0.0,
-        p99_execution_ms: 0.0,
+        total_enqueued: metrics.jobs_enqueued,
+        running: metrics.current_running,
+        pending: metrics.current_queue_size,
+        completed: metrics.jobs_completed,
+        failed: metrics.jobs_failed,
+        dead_letter: metrics.jobs_in_dlq,
+        avg_execution_ms: metrics.avg_execution_time_ms as f64,
+        p95_execution_ms: metrics.p95_execution_time_ms as f64,
+        p99_execution_ms: metrics.p99_execution_time_ms as f64,
         success_rate,
-        message: "Statistics retrieved successfully (placeholder data)".to_string(),
+        message: "Statistics retrieved successfully".to_string(),
     };
 
     tracing::info!(
         admin_id = admin.id,
+        jobs_enqueued = metrics.jobs_enqueued,
+        jobs_completed = metrics.jobs_completed,
+        jobs_failed = metrics.jobs_failed,
         "Admin retrieved job statistics"
     );
 
