@@ -203,146 +203,97 @@ impl TryFrom<String> for OAuthProvider {
     }
 }
 
-// TODO: Re-enable tests once TestDatabase is available for OAuth2
-/*
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::testing::TestDatabase;
 
-    //     #[tokio::test]
-    //     async fn test_link_and_find_oauth_account() {
-    //         let test_db = TestDatabase::new().await;
-    //         let pool = test_db.pool();
-    // 
-    //         // Create a test user
-    //         let user_id = sqlx::query_scalar::<_, i64>(
-    //             "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id",
-    //         )
-    //         .bind("test@example.com")
-    //         .bind("hash")
-    //         .fetch_one(pool)
-    //         .await
-    //         .unwrap();
-    // 
-    //         // Link OAuth account
-    //         let user_info = OAuthUserInfo {
-    //             provider_user_id: "123456".to_string(),
-    //             email: "test@gmail.com".to_string(),
-    //             name: Some("Test User".to_string()),
-    //             avatar_url: Some("https://example.com/avatar.jpg".to_string()),
-    //             email_verified: true,
-    //         };
-    // 
-    //         let account = OAuthAccount::link_account(pool, user_id, OAuthProvider::Google, &user_info)
-    //             .await
-    //             .unwrap();
-    // 
-    //         assert_eq!(account.user_id, user_id);
-    //         assert_eq!(account.provider, OAuthProvider::Google);
-    //         assert_eq!(account.provider_user_id, "123456");
-    //         assert_eq!(account.email, "test@gmail.com");
-    // 
-    //         // Find by provider
-    //         let found = OAuthAccount::find_by_provider(pool, OAuthProvider::Google, "123456")
-    //             .await
-    //             .unwrap()
-    //             .unwrap();
-    // 
-    //         assert_eq!(found.id, account.id);
-    //         assert_eq!(found.user_id, user_id);
-    // 
-    //         // Find by user_id
-    //         let accounts = OAuthAccount::find_by_user_id(pool, user_id)
-    //             .await
-    //             .unwrap();
-    // 
-    //         assert_eq!(accounts.len(), 1);
-    //         assert_eq!(accounts[0].id, account.id);
-    //     }
-    // 
-    //     #[tokio::test]
-    //     async fn test_unlink_oauth_account() {
-    //         let test_db = TestDatabase::new().await;
-    //         let pool = test_db.pool();
-    // 
-    //         // Create a test user
-    //         let user_id = sqlx::query_scalar::<_, i64>(
-    //             "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id",
-    //         )
-    //         .bind("test@example.com")
-    //         .bind("hash")
-    //         .fetch_one(pool)
-    //         .await
-    //         .unwrap();
-    // 
-    //         // Link OAuth account
-    //         let user_info = OAuthUserInfo {
-    //             provider_user_id: "123456".to_string(),
-    //             email: "test@github.com".to_string(),
-    //             name: Some("Test User".to_string()),
-    //             avatar_url: None,
-    //             email_verified: true,
-    //         };
-    // 
-    //         OAuthAccount::link_account(pool, user_id, OAuthProvider::GitHub, &user_info)
-    //             .await
-    //             .unwrap();
-    // 
-    //         // Unlink account
-    //         let unlinked = OAuthAccount::unlink_account(pool, user_id, OAuthProvider::GitHub)
-    //             .await
-    //             .unwrap();
-    // 
-    //         assert!(unlinked);
-    // 
-    //         // Verify account is gone
-    //         let found = OAuthAccount::find_by_provider(pool, OAuthProvider::GitHub, "123456")
-    //             .await
-    //             .unwrap();
-    // 
-    //         assert!(found.is_none());
-    //     }
+    #[test]
+    fn test_oauth_account_serialization() {
+        let account = OAuthAccount {
+            id: 1,
+            user_id: 100,
+            provider: OAuthProvider::Google,
+            provider_user_id: "123456".to_string(),
+            email: "test@gmail.com".to_string(),
+            name: Some("Test User".to_string()),
+            avatar_url: Some("https://example.com/avatar.jpg".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
 
-    //     #[tokio::test]
-    //     async fn test_user_has_oauth_accounts() {
-    //         let test_db = TestDatabase::new().await;
-    //         let pool = test_db.pool();
-    // 
-    //         // Create a test user
-    //         let user_id = sqlx::query_scalar::<_, i64>(
-    //             "INSERT INTO users (email, password_hash) VALUES ($1, $2) RETURNING id",
-    //         )
-    //         .bind("test@example.com")
-    //         .bind("hash")
-    //         .fetch_one(pool)
-    //         .await
-    //         .unwrap();
-    // 
-    //         // Initially no OAuth accounts
-    //         let has_accounts = OAuthAccount::user_has_oauth_accounts(pool, user_id)
-    //             .await
-    //             .unwrap();
-    //         assert!(!has_accounts);
-    // 
-    //         // Link an OAuth account
-    //         let user_info = OAuthUserInfo {
-    //             provider_user_id: "123456".to_string(),
-    //             email: "test@google.com".to_string(),
-    //             name: None,
-    //             avatar_url: None,
-    //             email_verified: true,
-    //         };
-    // 
-    //         OAuthAccount::link_account(pool, user_id, OAuthProvider::Google, &user_info)
-    //             .await
-    //             .unwrap();
-    // 
-    //         // Now has OAuth accounts
-    //         let has_accounts = OAuthAccount::user_has_oauth_accounts(pool, user_id)
-            .await
-            .unwrap();
-        assert!(has_accounts);
+        // Test serialization
+        let json = serde_json::to_string(&account).unwrap();
+        assert!(json.contains("123456"));
+        assert!(json.contains("test@gmail.com"));
+
+        // Test deserialization
+        let deserialized: OAuthAccount = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.id, 1);
+        assert_eq!(deserialized.user_id, 100);
+        assert_eq!(deserialized.provider, OAuthProvider::Google);
+        assert_eq!(deserialized.provider_user_id, "123456");
+        assert_eq!(deserialized.email, "test@gmail.com");
+    }
+
+    #[test]
+    fn test_oauth_provider_try_from_string() {
+        // Test valid conversions
+        assert_eq!(
+            OAuthProvider::try_from("google".to_string()).unwrap(),
+            OAuthProvider::Google
+        );
+        assert_eq!(
+            OAuthProvider::try_from("github".to_string()).unwrap(),
+            OAuthProvider::GitHub
+        );
+        assert_eq!(
+            OAuthProvider::try_from("oidc".to_string()).unwrap(),
+            OAuthProvider::Oidc
+        );
+
+        // Test invalid conversion
+        assert!(OAuthProvider::try_from("invalid".to_string()).is_err());
+    }
+
+    #[test]
+    fn test_oauth_account_debug() {
+        let account = OAuthAccount {
+            id: 1,
+            user_id: 100,
+            provider: OAuthProvider::GitHub,
+            provider_user_id: "gh123".to_string(),
+            email: "test@github.com".to_string(),
+            name: None,
+            avatar_url: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let debug_str = format!("{account:?}");
+        assert!(debug_str.contains("OAuthAccount"));
+        assert!(debug_str.contains("GitHub"));
+        assert!(debug_str.contains("gh123"));
+    }
+
+    #[test]
+    fn test_oauth_account_clone() {
+        let account = OAuthAccount {
+            id: 1,
+            user_id: 100,
+            provider: OAuthProvider::Google,
+            provider_user_id: "123456".to_string(),
+            email: "test@gmail.com".to_string(),
+            name: Some("Test User".to_string()),
+            avatar_url: Some("https://example.com/avatar.jpg".to_string()),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let cloned = account.clone();
+        assert_eq!(cloned.id, account.id);
+        assert_eq!(cloned.user_id, account.user_id);
+        assert_eq!(cloned.provider, account.provider);
+        assert_eq!(cloned.provider_user_id, account.provider_user_id);
+        assert_eq!(cloned.email, account.email);
     }
 }
-*/
