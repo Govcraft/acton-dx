@@ -339,10 +339,13 @@ use std::time::Duration;
 use sqlx::PgPool;
 {{/if}}
 {{#if needs_email}}
-// TODO: Add your email client import
+use acton_htmx::email::{Email, EmailSender};
 {{/if}}
 
 /// {{job_description}}
+///
+/// This job demonstrates the standard structure for background job implementation.
+/// Customize the execute() method below to implement your specific business logic.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct {{job_name}}Job {
 {{#each fields}}
@@ -358,7 +361,6 @@ impl Job for {{job_name}}Job {
     type Result = {{result_type}};
 
     async fn execute(&self) -> JobResult<Self::Result> {
-        // TODO: Implement job logic
         tracing::info!(
             job_type = "{{job_name}}",
 {{#each fields}}
@@ -367,7 +369,31 @@ impl Job for {{job_name}}Job {
             "Executing {{job_name}} job"
         );
 
-        // Your implementation here
+        // Implement your job logic here
+        // Example patterns:
+        //
+        // 1. Email sending:
+        //    let email = Email::new()
+        //        .to(&self.recipient_email)
+        //        .from("noreply@example.com")
+        //        .subject("Subject")
+        //        .text("Body");
+        //    context.email_sender().send(email).await?;
+        //
+        // 2. Database operations:
+        //    sqlx::query!("INSERT INTO table (col) VALUES ($1)", self.value)
+        //        .execute(context.db_pool())
+        //        .await?;
+        //
+        // 3. File processing:
+        //    let content = context.file_storage()
+        //        .retrieve(&self.file_id)
+        //        .await?;
+        //    // Process content...
+        //
+        // 4. External API calls:
+        //    let response = reqwest::get(&self.api_url).await?;
+        //    let data = response.json::<Data>().await?;
 
         Ok({{result_default}})
     }
@@ -524,14 +550,87 @@ fn default_page() -> usize {
 }
 
 /// Job history with pagination and search
+#[derive(Template)]
+#[template(path = "jobs/_history_list.html")]
+struct JobHistoryTemplate {
+    jobs: Vec<JobHistoryItem>,
+    page_start: usize,
+    page_end: usize,
+    total_jobs: usize,
+    has_prev: bool,
+    has_next: bool,
+    prev_page: usize,
+    next_page: usize,
+}
+
+/// Simplified job history item for template rendering
+#[derive(Debug, Clone)]
+struct JobHistoryItem {
+    id: String,
+    job_type: String,
+    status: String,
+    started_at: String,
+    duration: String,
+}
+
 pub async fn history(
     _auth: Authenticated<User>,
     State(state): State<AppState>,
     Query(query): Query<HistoryQuery>,
 ) -> AppResult<Response> {
-    // TODO: Implement job history retrieval with pagination
-    // This will require adding history tracking to JobAgent
+    use acton_htmx::jobs::agent::GetJobHistoryRequest;
+    use std::time::Duration;
 
-    Ok(HxRedirect::to("/admin/jobs").into_response())
+    // Create request for job history
+    let (request, rx) = GetJobHistoryRequest::new(
+        query.page,
+        20, // Page size
+        query.search.clone(),
+    );
+
+    // Send request to JobAgent
+    state.jobs.send(request).await;
+
+    // Wait for response with timeout
+    let timeout = Duration::from_millis(200);
+    let history_page = tokio::time::timeout(timeout, rx)
+        .await
+        .map_err(|_| anyhow::anyhow!("Job history request timed out"))??;
+
+    // Convert records to template items
+    let jobs: Vec<JobHistoryItem> = history_page
+        .jobs
+        .into_iter()
+        .map(|record| {
+            let status = format!("{:?}", record.status);
+            let started_at = record.started_at.format("%Y-%m-%d %H:%M:%S").to_string();
+            let duration = if record.duration_ms < 1000 {
+                format!("{}ms", record.duration_ms)
+            } else {
+                format!("{:.2}s", record.duration_ms as f64 / 1000.0)
+            };
+
+            JobHistoryItem {
+                id: record.id.to_string(),
+                job_type: record.job_type,
+                status,
+                started_at,
+                duration,
+            }
+        })
+        .collect();
+
+    let template = JobHistoryTemplate {
+        jobs,
+        page_start: history_page.page_start(),
+        page_end: history_page.page_end(),
+        total_jobs: history_page.total_count,
+        has_prev: history_page.has_prev,
+        has_next: history_page.has_next,
+        prev_page: history_page.prev_page(),
+        next_page: history_page.next_page(),
+    };
+
+    Ok(template.into_response())
 }
 "#;

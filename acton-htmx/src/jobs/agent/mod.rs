@@ -1,5 +1,6 @@
 //! Job processing agent using acton-reactive.
 
+pub mod history;
 pub(crate) mod messages;
 pub(crate) mod persistence;
 pub(crate) mod queue;
@@ -7,10 +8,11 @@ pub(crate) mod queue;
 pub mod redis_agent;
 pub mod scheduled;
 
+pub use history::JobHistoryRecord;
 pub use messages::{
-    CancelJobRequest, ClearDeadLetterQueueRequest, EnqueueJob, GetJobStatusRequest,
-    GetMetricsRequest, JobEnqueued, JobMetrics, ResponseChannel, RetryAllFailedRequest,
-    RetryJobRequest,
+    CancelJobRequest, ClearDeadLetterQueueRequest, EnqueueJob, GetJobHistoryRequest,
+    GetJobStatusRequest, GetMetricsRequest, JobEnqueued, JobHistoryPage, JobMetrics,
+    ResponseChannel, RetryAllFailedRequest, RetryJobRequest,
 };
 #[cfg(feature = "redis")]
 pub use redis_agent::RedisPersistenceAgent;
@@ -24,6 +26,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::{debug, warn};
 
+use history::JobHistory;
 use messages::{GetJobStatus, GetMetrics, JobStatusResponse};
 use queue::{JobQueue, QueuedJob};
 
@@ -37,6 +40,7 @@ type JobAgentBuilder = ManagedAgent<Idle, JobAgent>;
 /// - Redis persistence (via dedicated `RedisPersistenceAgent`)
 /// - Automatic retry with exponential backoff
 /// - Dead letter queue for failed jobs
+/// - Job history tracking with pagination
 /// - Graceful shutdown
 /// - Service access via [`JobContext`](crate::jobs::JobContext)
 #[derive(Clone)]
@@ -47,6 +51,8 @@ pub struct JobAgent {
     running: Arc<RwLock<HashMap<JobId, JobStatus>>>,
     /// Dead letter queue for permanently failed jobs.
     dead_letter: Arc<RwLock<HashMap<JobId, QueuedJob>>>,
+    /// Job history with completed jobs (bounded circular buffer).
+    history: Arc<RwLock<JobHistory>>,
     /// Job metrics.
     metrics: Arc<RwLock<JobMetrics>>,
     /// Job execution context with services.
@@ -65,6 +71,7 @@ impl std::fmt::Debug for JobAgent {
             .field("queue", &"<JobQueue>")
             .field("running", &self.running.read().len())
             .field("dead_letter", &self.dead_letter.read().len())
+            .field("history", &self.history.read().len())
             .field("metrics", &self.metrics.read())
             .field("context", &self.context);
 
@@ -92,6 +99,7 @@ impl JobAgent {
             queue: Arc::new(RwLock::new(JobQueue::new(10_000))),
             running: Arc::new(RwLock::new(HashMap::new())),
             dead_letter: Arc::new(RwLock::new(HashMap::new())),
+            history: Arc::new(RwLock::new(JobHistory::new(1000))), // Keep last 1000 jobs
             metrics: Arc::new(RwLock::new(JobMetrics::default())),
             context: Arc::new(JobContext::new()),
             #[cfg(feature = "redis")]
@@ -109,6 +117,7 @@ impl JobAgent {
             queue: Arc::new(RwLock::new(JobQueue::new(10_000))),
             running: Arc::new(RwLock::new(HashMap::new())),
             dead_letter: Arc::new(RwLock::new(HashMap::new())),
+            history: Arc::new(RwLock::new(JobHistory::new(1000))), // Keep last 1000 jobs
             metrics: Arc::new(RwLock::new(JobMetrics::default())),
             context: Arc::new(context),
             #[cfg(feature = "redis")]
@@ -152,6 +161,7 @@ impl JobAgent {
             queue: Arc::new(RwLock::new(JobQueue::new(10_000))),
             running: Arc::new(RwLock::new(HashMap::new())),
             dead_letter: Arc::new(RwLock::new(HashMap::new())),
+            history: Arc::new(RwLock::new(JobHistory::new(1000))), // Keep last 1000 jobs
             metrics: Arc::new(RwLock::new(JobMetrics::default())),
             context: Arc::new(context),
             redis_persistence: Some(redis_persistence),
@@ -379,6 +389,26 @@ impl JobAgent {
                 AgentReply::from_async(async move {
                     Self::send_usize_response(response_tx, count).await;
                 })
+            })
+            // Get job history with pagination and search
+            .act_on::<GetJobHistoryRequest>(|agent, envelope| {
+                let msg = envelope.message();
+                let response_tx = msg.response_tx.clone();
+                let page = msg.page;
+                let page_size = msg.page_size;
+                let search_query = msg.search_query.clone();
+
+                // Get paginated history from the agent's history store
+                let (jobs, total_count) = agent
+                    .model
+                    .history
+                    .read()
+                    .get_page(page, page_size, search_query.as_deref());
+
+                Box::pin(async move {
+                    let history_page = JobHistoryPage::new(jobs, page, page_size, total_count);
+                    Self::send_history_response(response_tx, history_page).await;
+                })
             });
 
         // Redis persistence is now handled by RedisPersistenceAgent (separate agent)
@@ -430,6 +460,19 @@ impl JobAgent {
         let mut guard = response_tx.lock().await;
         if let Some(tx) = guard.take() {
             let _ = tx.send(count);
+        }
+    }
+
+    /// Send job history page response via oneshot channel.
+    ///
+    /// Helper method for web handler pattern responses (history operations).
+    async fn send_history_response(
+        response_tx: ResponseChannel<JobHistoryPage>,
+        history: JobHistoryPage,
+    ) {
+        let mut guard = response_tx.lock().await;
+        if let Some(tx) = guard.take() {
+            let _ = tx.send(history);
         }
     }
 }

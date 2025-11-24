@@ -418,3 +418,143 @@ impl ClearDeadLetterQueueRequest {
         (request, rx)
     }
 }
+
+/// Job history page response containing records and pagination info.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobHistoryPage {
+    /// Job history records for this page.
+    pub jobs: Vec<super::history::JobHistoryRecord>,
+    /// Current page number (1-indexed).
+    pub page: usize,
+    /// Number of records per page.
+    pub page_size: usize,
+    /// Total number of matching records across all pages.
+    pub total_count: usize,
+    /// Whether there is a previous page.
+    pub has_prev: bool,
+    /// Whether there is a next page.
+    pub has_next: bool,
+}
+
+impl JobHistoryPage {
+    /// Create a new job history page from records and pagination info.
+    #[must_use]
+    pub const fn new(
+        jobs: Vec<super::history::JobHistoryRecord>,
+        page: usize,
+        page_size: usize,
+        total_count: usize,
+    ) -> Self {
+        let has_prev = page > 1;
+        let total_pages = total_count.div_ceil(page_size);
+        let has_next = page < total_pages;
+
+        Self {
+            jobs,
+            page,
+            page_size,
+            total_count,
+            has_prev,
+            has_next,
+        }
+    }
+
+    /// Get the previous page number.
+    #[must_use]
+    pub fn prev_page(&self) -> usize {
+        self.page.saturating_sub(1).max(1)
+    }
+
+    /// Get the next page number.
+    #[must_use]
+    pub const fn next_page(&self) -> usize {
+        self.page + 1
+    }
+
+    /// Get the starting record number for this page (1-indexed).
+    #[must_use]
+    pub fn page_start(&self) -> usize {
+        if self.jobs.is_empty() {
+            0
+        } else {
+            (self.page - 1) * self.page_size + 1
+        }
+    }
+
+    /// Get the ending record number for this page (1-indexed).
+    #[must_use]
+    pub fn page_end(&self) -> usize {
+        if self.jobs.is_empty() {
+            0
+        } else {
+            self.page_start() + self.jobs.len() - 1
+        }
+    }
+}
+
+/// Request job history with pagination and search (web handler pattern).
+///
+/// Retrieves completed job history with optional search filtering
+/// and pagination support.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use acton_htmx::jobs::agent::messages::GetJobHistoryRequest;
+///
+/// async fn handler(
+///     State(state): State<ActonHtmxState>,
+///     Query(params): Query<HistoryParams>,
+/// ) -> Result<Response> {
+///     let (request, rx) = GetJobHistoryRequest::new(
+///         params.page.unwrap_or(1),
+///         params.page_size.unwrap_or(20),
+///         params.search,
+///     );
+///     state.job_agent().send(request).await;
+///
+///     let timeout = Duration::from_millis(200);
+///     let history = tokio::time::timeout(timeout, rx).await??;
+///
+///     Ok(Json(history).into_response())
+/// }
+/// ```
+#[derive(Clone, Debug)]
+pub struct GetJobHistoryRequest {
+    /// Page number (1-indexed).
+    pub page: usize,
+    /// Number of records per page.
+    pub page_size: usize,
+    /// Optional search query to filter results.
+    pub search_query: Option<String>,
+    /// Response channel for history page.
+    pub response_tx: ResponseChannel<JobHistoryPage>,
+}
+
+impl GetJobHistoryRequest {
+    /// Create a new job history request with response channel.
+    ///
+    /// # Arguments
+    ///
+    /// * `page` - Page number (1-indexed)
+    /// * `page_size` - Number of records per page
+    /// * `search_query` - Optional search string to filter records
+    ///
+    /// Returns a tuple of (request, receiver) where the request should be
+    /// sent to the agent and the receiver awaited for the response.
+    #[must_use]
+    pub fn new(
+        page: usize,
+        page_size: usize,
+        search_query: Option<String>,
+    ) -> (Self, oneshot::Receiver<JobHistoryPage>) {
+        let (tx, rx) = oneshot::channel();
+        let request = Self {
+            page: page.max(1), // Ensure page is at least 1
+            page_size: page_size.clamp(1, 100), // Clamp between 1-100
+            search_query,
+            response_tx: Arc::new(Mutex::new(Some(tx))),
+        };
+        (request, rx)
+    }
+}
