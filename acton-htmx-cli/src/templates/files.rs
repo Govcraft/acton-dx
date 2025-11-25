@@ -14,7 +14,7 @@ rust-version = "1.75"
 [dependencies]
 # acton-htmx re-exports: tokio, axum, tower, tower-http, tracing, tracing-subscriber,
 # serde, serde_json, sqlx, askama, validator, anyhow, thiserror, acton-reactive
-acton-htmx = { version = "1.0.0-beta", default-features = false, features = ["sqlite"] }
+acton-htmx = { version = "1.0.0-beta.7", default-features = false, features = ["sqlite"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
@@ -38,7 +38,7 @@ rust-version = "1.75"
 [dependencies]
 # acton-htmx re-exports: tokio, axum, tower, tower-http, tracing, tracing-subscriber,
 # serde, serde_json, sqlx, askama, validator, anyhow, thiserror, acton-reactive
-acton-htmx = { version = "1.0.0-beta", default-features = false, features = ["postgres"] }
+acton-htmx = { version = "1.0.0-beta.7", default-features = false, features = ["postgres"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
