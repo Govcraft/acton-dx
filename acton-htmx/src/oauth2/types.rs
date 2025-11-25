@@ -110,36 +110,32 @@ impl OAuthConfig {
         }
     }
 
+    /// Get a reference to the provider configuration option
+    ///
+    /// This is a helper method to reduce code duplication in provider lookups.
+    /// Returns `Option<&ProviderConfig>` following Rust idioms for optional references.
+    const fn provider_config(&self, provider: OAuthProvider) -> Option<&ProviderConfig> {
+        match provider {
+            OAuthProvider::Google => self.google.as_ref(),
+            OAuthProvider::GitHub => self.github.as_ref(),
+            OAuthProvider::Oidc => self.oidc.as_ref(),
+        }
+    }
+
     /// Get configuration for a specific provider
     ///
     /// # Errors
     ///
     /// Returns error if the provider is not configured
     pub fn get_provider(&self, provider: OAuthProvider) -> Result<&ProviderConfig, OAuthError> {
-        match provider {
-            OAuthProvider::Google => self
-                .google
-                .as_ref()
-                .ok_or(OAuthError::ProviderNotConfigured(provider)),
-            OAuthProvider::GitHub => self
-                .github
-                .as_ref()
-                .ok_or(OAuthError::ProviderNotConfigured(provider)),
-            OAuthProvider::Oidc => self
-                .oidc
-                .as_ref()
-                .ok_or(OAuthError::ProviderNotConfigured(provider)),
-        }
+        self.provider_config(provider)
+            .ok_or(OAuthError::ProviderNotConfigured(provider))
     }
 
     /// Check if a provider is configured
     #[must_use]
     pub const fn is_provider_configured(&self, provider: OAuthProvider) -> bool {
-        match provider {
-            OAuthProvider::Google => self.google.is_some(),
-            OAuthProvider::GitHub => self.github.is_some(),
-            OAuthProvider::Oidc => self.oidc.is_some(),
-        }
+        self.provider_config(provider).is_some()
     }
 }
 

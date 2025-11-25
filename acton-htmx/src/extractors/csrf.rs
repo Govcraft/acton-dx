@@ -2,7 +2,7 @@
 //!
 //! Provides extractors that allow handlers to access CSRF tokens for rendering in templates.
 
-use crate::agents::{CsrfToken, GetOrCreateTokenRequest};
+use crate::agents::{CsrfToken, GetOrCreateToken};
 use crate::auth::session::SessionId;
 use crate::state::ActonHtmxState;
 use acton_reactive::prelude::AgentHandleInterface;
@@ -76,7 +76,7 @@ where
             })?;
 
         // Get or create CSRF token from CSRF manager
-        let (request, rx) = GetOrCreateTokenRequest::new(session_id);
+        let (request, rx) = GetOrCreateToken::new(session_id);
         state.csrf_manager().send(request).await;
 
         // Wait for response with timeout

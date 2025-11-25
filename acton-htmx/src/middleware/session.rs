@@ -4,7 +4,7 @@
 //! and persistence across requests. Integrates with the `SessionManagerAgent`
 //! for session storage.
 
-use crate::agents::{LoadSessionRequest, SaveSessionRequest};
+use crate::agents::{LoadSession, SaveSession};
 use crate::auth::session::{SessionData, SessionId};
 use crate::state::ActonHtmxState;
 use acton_reactive::prelude::{AgentHandle, AgentHandleInterface};
@@ -189,7 +189,7 @@ where
             // Load or create session
             let (session_id, session_data, is_new) = if let Some(id) = existing_session_id {
                 // Try to load existing session from agent
-                let (request, rx) = LoadSessionRequest::new(id.clone());
+                let (request, rx) = LoadSession::with_response(id.clone());
                 session_manager.send(request).await;
 
                 // Wait for response with timeout
@@ -222,7 +222,7 @@ where
                 .unwrap_or(session_data);
 
             // Save session to agent (fire-and-forget for performance)
-            let save_request = SaveSessionRequest::new(session_id.clone(), final_session_data);
+            let save_request = SaveSession::new(session_id.clone(), final_session_data);
             session_manager.send(save_request).await;
 
             // Set session cookie if new

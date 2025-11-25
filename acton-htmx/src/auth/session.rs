@@ -108,6 +108,38 @@ impl SessionData {
         self.expires_at = self.last_accessed + extend_by;
     }
 
+    /// Validate session is not expired and touch it if valid
+    ///
+    /// This method combines the common pattern of checking expiry and
+    /// extending the session lifetime in a single operation.
+    ///
+    /// # Returns
+    ///
+    /// - `true` if the session is valid (not expired) - session is touched
+    /// - `false` if the session has expired - session is not modified
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use acton_htmx::auth::session::SessionData;
+    /// use chrono::Duration;
+    ///
+    /// let mut session = SessionData::new();
+    /// assert!(session.validate_and_touch(Duration::hours(24)));
+    ///
+    /// // Expired session returns false
+    /// let mut expired = SessionData::with_expiration(Duration::seconds(-1));
+    /// assert!(!expired.validate_and_touch(Duration::hours(24)));
+    /// ```
+    pub fn validate_and_touch(&mut self, extend_by: Duration) -> bool {
+        if self.is_expired() {
+            false
+        } else {
+            self.touch(extend_by);
+            true
+        }
+    }
+
     /// Get a value from session data
     #[must_use]
     pub fn get<T: for<'de> Deserialize<'de>>(&self, key: &str) -> Option<T> {
@@ -313,6 +345,27 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(10));
         data.touch(Duration::hours(24));
         assert!(data.expires_at > original_expiry);
+    }
+
+    #[test]
+    fn test_session_data_validate_and_touch_valid() {
+        let mut data = SessionData::new();
+        let original_expiry = data.expires_at;
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Valid session should return true and extend expiry
+        assert!(data.validate_and_touch(Duration::hours(24)));
+        assert!(data.expires_at > original_expiry);
+    }
+
+    #[test]
+    fn test_session_data_validate_and_touch_expired() {
+        let mut data = SessionData::with_expiration(Duration::seconds(-1));
+        let original_expiry = data.expires_at;
+
+        // Expired session should return false and not modify expiry
+        assert!(!data.validate_and_touch(Duration::hours(24)));
+        assert_eq!(data.expires_at, original_expiry);
     }
 
     #[test]

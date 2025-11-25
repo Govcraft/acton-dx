@@ -34,48 +34,13 @@
 //! ```
 
 use crate::auth::{Session, User, UserError};
+use crate::middleware::is_htmx_request;
 use crate::state::ActonHtmxState;
 use axum::{
     extract::{FromRef, FromRequestParts},
-    http::{header::HeaderMap, request::Parts, StatusCode},
+    http::{request::Parts, StatusCode},
     response::{IntoResponse, Redirect, Response},
 };
-
-/// Check if the request is an HTMX request
-///
-/// HTMX requests include the `HX-Request: true` header. This helper function
-/// provides a single source of truth for HTMX detection across all extractors
-/// and middleware.
-///
-/// # Arguments
-///
-/// * `headers` - The request headers to check
-///
-/// # Returns
-///
-/// `true` if the request is from HTMX, `false` otherwise
-///
-/// # Example
-///
-/// ```rust
-/// use axum::http::HeaderMap;
-///
-/// fn handle_request(headers: &HeaderMap) {
-///     if is_htmx_request(headers) {
-///         // Return HTMX-specific response
-///     } else {
-///         // Return regular response
-///     }
-/// }
-/// ```
-#[must_use]
-#[inline]
-fn is_htmx_request(headers: &HeaderMap) -> bool {
-    headers
-        .get("HX-Request")
-        .and_then(|v| v.to_str().ok())
-        == Some("true")
-}
 
 /// Authenticated user extractor for protected routes
 ///
@@ -112,20 +77,16 @@ where
         let is_htmx = is_htmx_request(&parts.headers);
 
         // Get session from request extensions
-        let session = parts.extensions.get::<Session>().cloned().ok_or(
-            if is_htmx {
-                AuthenticationError::MissingSessionHtmx
-            } else {
-                AuthenticationError::MissingSession
-            },
-        )?;
+        let session = parts
+            .extensions
+            .get::<Session>()
+            .cloned()
+            .ok_or_else(|| AuthenticationError::missing_session(is_htmx))?;
 
         // Check if user is authenticated
-        let user_id = session.user_id().ok_or(if is_htmx {
-            AuthenticationError::NotAuthenticatedHtmx
-        } else {
-            AuthenticationError::NotAuthenticated
-        })?;
+        let user_id = session
+            .user_id()
+            .ok_or_else(|| AuthenticationError::not_authenticated(is_htmx))?;
 
         // Extract state to get database pool
         let app_state = ActonHtmxState::from_ref(state);
@@ -134,13 +95,7 @@ where
         let user = User::find_by_id(user_id, app_state.database_pool())
             .await
             .map_err(|e| match e {
-                UserError::NotFound => {
-                    if is_htmx {
-                        AuthenticationError::NotAuthenticatedHtmx
-                    } else {
-                        AuthenticationError::NotAuthenticated
-                    }
-                }
+                UserError::NotFound => AuthenticationError::not_authenticated(is_htmx),
                 _ => AuthenticationError::DatabaseError(e),
             })?;
 
@@ -222,6 +177,50 @@ pub enum AuthenticationError {
 
     /// Database error occurred
     DatabaseError(UserError),
+}
+
+impl AuthenticationError {
+    /// Create a "missing session" error appropriate for the request type.
+    ///
+    /// This helper reduces duplication by encapsulating the HTMX detection logic.
+    ///
+    /// # Arguments
+    ///
+    /// * `is_htmx` - Whether the request is from HTMX
+    ///
+    /// # Returns
+    ///
+    /// * [`MissingSessionHtmx`](Self::MissingSessionHtmx) for HTMX requests
+    /// * [`MissingSession`](Self::MissingSession) for regular requests
+    #[must_use]
+    pub const fn missing_session(is_htmx: bool) -> Self {
+        if is_htmx {
+            Self::MissingSessionHtmx
+        } else {
+            Self::MissingSession
+        }
+    }
+
+    /// Create a "not authenticated" error appropriate for the request type.
+    ///
+    /// This helper reduces duplication by encapsulating the HTMX detection logic.
+    ///
+    /// # Arguments
+    ///
+    /// * `is_htmx` - Whether the request is from HTMX
+    ///
+    /// # Returns
+    ///
+    /// * [`NotAuthenticatedHtmx`](Self::NotAuthenticatedHtmx) for HTMX requests
+    /// * [`NotAuthenticated`](Self::NotAuthenticated) for regular requests
+    #[must_use]
+    pub const fn not_authenticated(is_htmx: bool) -> Self {
+        if is_htmx {
+            Self::NotAuthenticatedHtmx
+        } else {
+            Self::NotAuthenticated
+        }
+    }
 }
 
 impl IntoResponse for AuthenticationError {
@@ -325,5 +324,29 @@ mod tests {
         let response = error.into_response();
 
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    #[test]
+    fn test_missing_session_helper_returns_htmx_variant_when_is_htmx_true() {
+        let error = AuthenticationError::missing_session(true);
+        assert!(matches!(error, AuthenticationError::MissingSessionHtmx));
+    }
+
+    #[test]
+    fn test_missing_session_helper_returns_regular_variant_when_is_htmx_false() {
+        let error = AuthenticationError::missing_session(false);
+        assert!(matches!(error, AuthenticationError::MissingSession));
+    }
+
+    #[test]
+    fn test_not_authenticated_helper_returns_htmx_variant_when_is_htmx_true() {
+        let error = AuthenticationError::not_authenticated(true);
+        assert!(matches!(error, AuthenticationError::NotAuthenticatedHtmx));
+    }
+
+    #[test]
+    fn test_not_authenticated_helper_returns_regular_variant_when_is_htmx_false() {
+        let error = AuthenticationError::not_authenticated(false);
+        assert!(matches!(error, AuthenticationError::NotAuthenticated));
     }
 }

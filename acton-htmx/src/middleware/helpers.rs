@@ -3,6 +3,48 @@
 //! This module provides helper utilities for creating middleware layers with
 //! consistent patterns across the framework. These helpers reduce boilerplate
 //! while maintaining clarity and idiomatic Rust code.
+//!
+//! # HTMX Request Detection
+//!
+//! The [`is_htmx_request`] function provides centralized HTMX request detection
+//! used by all middleware and extractors in the framework.
+
+use axum::http::HeaderMap;
+
+/// Check if the request is an HTMX request.
+///
+/// HTMX requests include the `HX-Request: true` header. This helper function
+/// provides a single source of truth for HTMX detection across all extractors
+/// and middleware in the framework.
+///
+/// # Arguments
+///
+/// * `headers` - The request headers to check
+///
+/// # Returns
+///
+/// `true` if the request is from HTMX, `false` otherwise.
+///
+/// # Example
+///
+/// ```rust
+/// use axum::http::HeaderMap;
+/// use acton_htmx::middleware::helpers::is_htmx_request;
+///
+/// let mut headers = HeaderMap::new();
+/// assert!(!is_htmx_request(&headers));
+///
+/// headers.insert("HX-Request", "true".parse().unwrap());
+/// assert!(is_htmx_request(&headers));
+/// ```
+#[must_use]
+#[inline]
+pub fn is_htmx_request(headers: &HeaderMap) -> bool {
+    headers
+        .get("HX-Request")
+        .and_then(|v| v.to_str().ok())
+        == Some("true")
+}
 
 /// Helper macro for creating standard middleware layer constructors
 ///
@@ -85,6 +127,42 @@ macro_rules! middleware_constructors {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn test_is_htmx_request_with_header() {
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", "true".parse().unwrap());
+        assert!(is_htmx_request(&headers));
+    }
+
+    #[test]
+    fn test_is_htmx_request_without_header() {
+        let headers = HeaderMap::new();
+        assert!(!is_htmx_request(&headers));
+    }
+
+    #[test]
+    fn test_is_htmx_request_with_wrong_value() {
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", "false".parse().unwrap());
+        assert!(!is_htmx_request(&headers));
+    }
+
+    #[test]
+    fn test_is_htmx_request_with_empty_value() {
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", "".parse().unwrap());
+        assert!(!is_htmx_request(&headers));
+    }
+
+    #[test]
+    fn test_is_htmx_request_case_sensitive() {
+        let mut headers = HeaderMap::new();
+        headers.insert("HX-Request", "True".parse().unwrap());
+        assert!(!is_htmx_request(&headers));
+    }
+
     // Macro usage is tested within the actual middleware implementations
     // (session, csrf, auth) which use this macro.
 }

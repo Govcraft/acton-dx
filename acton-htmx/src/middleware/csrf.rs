@@ -12,7 +12,7 @@
 //! - Support for both form data and custom headers
 //! - Session-based token storage
 
-use crate::agents::{CsrfToken, ValidateTokenRequest};
+use crate::agents::{CsrfToken, ValidateToken};
 use crate::auth::session::SessionId;
 use crate::state::ActonHtmxState;
 use acton_reactive::prelude::{AgentHandle, AgentHandleInterface};
@@ -219,7 +219,7 @@ where
 
         Box::pin(async move {
             // Validate token with CSRF manager
-            let (validate_request, rx) = ValidateTokenRequest::new(session_id, token);
+            let (validate_request, rx) = ValidateToken::new(session_id, token);
             csrf_manager.send(validate_request).await;
 
             let is_valid = match tokio::time::timeout(timeout, rx).await {

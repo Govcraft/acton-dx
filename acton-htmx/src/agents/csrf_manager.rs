@@ -3,9 +3,9 @@
 //! Actor-based CSRF token management using acton-reactive.
 //! Implements per-session token generation, validation, and rotation.
 //!
-//! This module provides two styles of CSRF operations:
-//! 1. **Agent-to-Agent**: Using `reply_envelope` for inter-agent communication
-//! 2. **Web Handler**: Using oneshot channels for request-reply from Axum handlers
+//! This module provides a unified message API that works for both:
+//! 1. **Web Handlers**: Using optional oneshot channels for synchronous responses
+//! 2. **Agent-to-Agent**: Using reply_envelope for asynchronous responses
 //!
 //! CSRF tokens are:
 //! - Cryptographically secure (32 bytes of randomness)
@@ -14,6 +14,7 @@
 //! - Validated against POST/PUT/DELETE/PATCH requests
 
 use crate::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
+use crate::agents::default_agent_config;
 use crate::auth::session::SessionId;
 use acton_reactive::prelude::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -90,110 +91,94 @@ pub struct CsrfManagerAgent {
 }
 
 // ============================================================================
-// Web Handler Messages (with oneshot response channels)
+// Unified Message Types
 // ============================================================================
 
 /// Request to get or create a CSRF token for a session
+///
+/// This message works for both web handlers (with oneshot channel) and
+/// agent-to-agent communication (via reply_envelope).
 #[derive(Clone, Debug)]
-pub struct GetOrCreateTokenRequest {
+pub struct GetOrCreateToken {
     /// The session ID to get/create token for
     pub session_id: SessionId,
-    /// Response channel (wrapped for Clone compatibility)
-    pub response_tx: ResponseChannel<CsrfToken>,
+    /// Optional response channel for web handlers
+    pub response_tx: Option<ResponseChannel<CsrfToken>>,
 }
 
-impl GetOrCreateTokenRequest {
-    /// Create a new get-or-create token request with response channel
+impl GetOrCreateToken {
+    /// Create a new get-or-create token request with response channel for web handlers
     #[must_use]
     pub fn new(session_id: SessionId) -> (Self, oneshot::Receiver<CsrfToken>) {
         let (response_tx, rx) = create_request_reply();
         let request = Self {
             session_id,
-            response_tx,
+            response_tx: Some(response_tx),
         };
         (request, rx)
+    }
+
+    /// Create a new get-or-create token message for agent-to-agent communication
+    #[must_use]
+    pub const fn agent_message(session_id: SessionId) -> Self {
+        Self {
+            session_id,
+            response_tx: None,
+        }
     }
 }
 
 /// Request to validate a CSRF token
-#[derive(Clone, Debug)]
-pub struct ValidateTokenRequest {
-    /// The session ID to validate against
-    pub session_id: SessionId,
-    /// The token to validate
-    pub token: CsrfToken,
-    /// Response channel for validation result
-    pub response_tx: ResponseChannel<bool>,
-}
-
-impl ValidateTokenRequest {
-    /// Create a new validate token request with response channel
-    #[must_use]
-    pub fn new(session_id: SessionId, token: CsrfToken) -> (Self, oneshot::Receiver<bool>) {
-        let (response_tx, rx) = create_request_reply();
-        let request = Self {
-            session_id,
-            token,
-            response_tx,
-        };
-        (request, rx)
-    }
-}
-
-/// Request to delete a CSRF token (on session cleanup)
-#[derive(Clone, Debug)]
-pub struct DeleteTokenRequest {
-    /// The session ID to delete token for
-    pub session_id: SessionId,
-}
-
-impl DeleteTokenRequest {
-    /// Create a new delete token request (fire-and-forget)
-    #[must_use]
-    pub const fn new(session_id: SessionId) -> Self {
-        Self { session_id }
-    }
-}
-
-// ============================================================================
-// Agent-to-Agent Messages (using reply_envelope)
-// ============================================================================
-
-/// Message to get or create a CSRF token (agent-to-agent)
-#[derive(Clone, Debug)]
-pub struct GetOrCreateToken {
-    /// The session ID to get/create token for
-    pub session_id: SessionId,
-}
-
-/// Response message containing the CSRF token
-#[derive(Clone, Debug)]
-pub struct TokenResponse {
-    /// The CSRF token
-    pub token: CsrfToken,
-}
-
-/// Message to validate a CSRF token (agent-to-agent)
+///
+/// This message works for both web handlers (with oneshot channel) and
+/// agent-to-agent communication (via reply_envelope).
 #[derive(Clone, Debug)]
 pub struct ValidateToken {
     /// The session ID to validate against
     pub session_id: SessionId,
     /// The token to validate
     pub token: CsrfToken,
+    /// Optional response channel for web handlers
+    pub response_tx: Option<ResponseChannel<bool>>,
 }
 
-/// Response message for token validation
-#[derive(Clone, Debug)]
-pub struct ValidationResponse {
-    /// Whether the token is valid
-    pub valid: bool,
+impl ValidateToken {
+    /// Create a new validate token request with response channel for web handlers
+    #[must_use]
+    pub fn new(session_id: SessionId, token: CsrfToken) -> (Self, oneshot::Receiver<bool>) {
+        let (response_tx, rx) = create_request_reply();
+        let request = Self {
+            session_id,
+            token,
+            response_tx: Some(response_tx),
+        };
+        (request, rx)
+    }
+
+    /// Create a new validate token message for agent-to-agent communication
+    #[must_use]
+    pub const fn agent_message(session_id: SessionId, token: CsrfToken) -> Self {
+        Self {
+            session_id,
+            token,
+            response_tx: None,
+        }
+    }
 }
 
-/// Message to delete a CSRF token
+/// Request to delete a CSRF token (on session cleanup)
 #[derive(Clone, Debug)]
 pub struct DeleteToken {
     /// The session ID to delete token for
     pub session_id: SessionId,
+}
+
+impl DeleteToken {
+    /// Create a new delete token request (fire-and-forget)
+    #[must_use]
+    pub const fn new(session_id: SessionId) -> Self {
+        Self { session_id }
+    }
 }
 
 /// Message to cleanup expired tokens
@@ -207,92 +192,66 @@ impl CsrfManagerAgent {
     ///
     /// Returns error if agent initialization fails
     pub async fn spawn(runtime: &mut AgentRuntime) -> anyhow::Result<AgentHandle> {
-        let config = AgentConfig::new(Ern::with_root("csrf_manager")?, None, None)?;
+        let config = default_agent_config("csrf_manager")?;
         let builder = runtime.new_agent_with_config::<Self>(config).await;
         Self::configure_handlers(builder).await
     }
 
     /// Configure all message handlers for the CSRF manager
     async fn configure_handlers(mut builder: CsrfAgentBuilder) -> anyhow::Result<AgentHandle> {
-        Self::configure_web_handlers(&mut builder);
-        Self::configure_agent_handlers(&mut builder);
-        Self::configure_cleanup_handler(&mut builder);
-
-        Ok(builder.start().await)
-    }
-
-    /// Configure web handler messages (oneshot channel responses)
-    fn configure_web_handlers(builder: &mut CsrfAgentBuilder) {
         builder
-            .mutate_on::<GetOrCreateTokenRequest>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let response_tx = envelope.message().response_tx.clone();
-
-                let token = Self::get_or_create_token_internal(&mut agent.model, &session_id);
-
-                AgentReply::from_async(async move {
-                    let _ = send_response(response_tx, token).await;
-                })
-            })
-            .mutate_on::<ValidateTokenRequest>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let token = envelope.message().token.clone();
-                let response_tx = envelope.message().response_tx.clone();
-
-                let valid = Self::validate_and_rotate_token(&mut agent.model, &session_id, &token);
-
-                AgentReply::from_async(async move {
-                    let _ = send_response(response_tx, valid).await;
-                })
-            })
-            .mutate_on::<DeleteTokenRequest>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                agent.model.tokens.remove(&session_id);
-                AgentReply::immediate()
-            });
-    }
-
-    /// Configure agent-to-agent messages (reply_envelope responses)
-    fn configure_agent_handlers(builder: &mut CsrfAgentBuilder) {
-        builder
+            // Unified handler for GetOrCreateToken (works for both web and agent-to-agent)
             .mutate_on::<GetOrCreateToken>(|agent, envelope| {
                 let session_id = envelope.message().session_id.clone();
+                let response_tx = envelope.message().response_tx.clone();
                 let reply_envelope = envelope.reply_envelope();
 
                 let token = Self::get_or_create_token_internal(&mut agent.model, &session_id);
 
                 AgentReply::from_async(async move {
-                    let _: () = reply_envelope.send(TokenResponse { token }).await;
+                    // Web handler response if channel provided
+                    if let Some(tx) = response_tx {
+                        let _ = send_response(tx, token.clone()).await;
+                    }
+                    // Agent-to-agent response via envelope (always sent)
+                    let _: () = reply_envelope.send(token).await;
                 })
             })
+            // Unified handler for ValidateToken (works for both web and agent-to-agent)
             .mutate_on::<ValidateToken>(|agent, envelope| {
                 let session_id = envelope.message().session_id.clone();
                 let token = envelope.message().token.clone();
+                let response_tx = envelope.message().response_tx.clone();
                 let reply_envelope = envelope.reply_envelope();
 
                 let valid = Self::validate_and_rotate_token(&mut agent.model, &session_id, &token);
 
                 AgentReply::from_async(async move {
-                    let _: () = reply_envelope.send(ValidationResponse { valid }).await;
+                    // Web handler response if channel provided
+                    if let Some(tx) = response_tx {
+                        let _ = send_response(tx, valid).await;
+                    }
+                    // Agent-to-agent response via envelope (always sent)
+                    let _: () = reply_envelope.send(valid).await;
                 })
             })
+            // Handler for DeleteToken (fire-and-forget)
             .mutate_on::<DeleteToken>(|agent, envelope| {
                 let session_id = envelope.message().session_id.clone();
                 agent.model.tokens.remove(&session_id);
                 AgentReply::immediate()
+            })
+            // Handler for CleanupExpired
+            .mutate_on::<CleanupExpired>(|agent, _envelope| {
+                agent.model.tokens.retain(|_session_id, data| !data.is_expired());
+                tracing::debug!(
+                    "Cleaned up expired CSRF tokens, {} tokens remaining",
+                    agent.model.tokens.len()
+                );
+                AgentReply::immediate()
             });
-    }
 
-    /// Configure cleanup handler
-    fn configure_cleanup_handler(builder: &mut CsrfAgentBuilder) {
-        builder.mutate_on::<CleanupExpired>(|agent, _envelope| {
-            agent.model.tokens.retain(|_session_id, data| !data.is_expired());
-            tracing::debug!(
-                "Cleaned up expired CSRF tokens, {} tokens remaining",
-                agent.model.tokens.len()
-            );
-            AgentReply::immediate()
-        });
+        Ok(builder.start().await)
     }
 
     /// Pure function: Get or create a CSRF token
@@ -398,14 +357,14 @@ mod tests {
         let handle = CsrfManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
-        let (request, rx) = GetOrCreateTokenRequest::new(session_id.clone());
+        let (request, rx) = GetOrCreateToken::new(session_id.clone());
 
         handle.send(request).await;
 
         let token1 = rx.await.expect("Failed to receive token");
 
         // Request again - should get the same token
-        let (request2, rx2) = GetOrCreateTokenRequest::new(session_id);
+        let (request2, rx2) = GetOrCreateToken::new(session_id);
         handle.send(request2).await;
 
         let token2 = rx2.await.expect("Failed to receive token");
@@ -421,20 +380,20 @@ mod tests {
         let session_id = SessionId::generate();
 
         // Get a token
-        let (request, rx) = GetOrCreateTokenRequest::new(session_id.clone());
+        let (request, rx) = GetOrCreateToken::new(session_id.clone());
         handle.send(request).await;
         let token = rx.await.expect("Failed to receive token");
 
         // Validate it
         let (validate_request, validate_rx) =
-            ValidateTokenRequest::new(session_id.clone(), token.clone());
+            ValidateToken::new(session_id.clone(), token.clone());
         handle.send(validate_request).await;
         let valid = validate_rx.await.expect("Failed to receive validation result");
 
         assert!(valid);
 
         // After validation, token should be rotated - old token should be invalid
-        let (validate_request2, validate_rx2) = ValidateTokenRequest::new(session_id, token);
+        let (validate_request2, validate_rx2) = ValidateToken::new(session_id, token);
         handle.send(validate_request2).await;
         let valid2 = validate_rx2
             .await
@@ -451,13 +410,13 @@ mod tests {
         let session_id = SessionId::generate();
 
         // Get a token
-        let (request, rx) = GetOrCreateTokenRequest::new(session_id.clone());
+        let (request, rx) = GetOrCreateToken::new(session_id.clone());
         handle.send(request).await;
         let _token = rx.await.expect("Failed to receive token");
 
         // Try to validate with wrong token
         let wrong_token = CsrfToken::generate();
-        let (validate_request, validate_rx) = ValidateTokenRequest::new(session_id, wrong_token);
+        let (validate_request, validate_rx) = ValidateToken::new(session_id, wrong_token);
         handle.send(validate_request).await;
         let valid = validate_rx.await.expect("Failed to receive validation result");
 
@@ -472,16 +431,16 @@ mod tests {
         let session_id = SessionId::generate();
 
         // Get a token
-        let (request, rx) = GetOrCreateTokenRequest::new(session_id.clone());
+        let (request, rx) = GetOrCreateToken::new(session_id.clone());
         handle.send(request).await;
         let token = rx.await.expect("Failed to receive token");
 
         // Delete the token
-        let delete_request = DeleteTokenRequest::new(session_id.clone());
+        let delete_request = DeleteToken::new(session_id.clone());
         handle.send(delete_request).await;
 
         // Try to validate - should fail
-        let (validate_request, validate_rx) = ValidateTokenRequest::new(session_id, token);
+        let (validate_request, validate_rx) = ValidateToken::new(session_id, token);
         handle.send(validate_request).await;
         let valid = validate_rx.await.expect("Failed to receive validation result");
 

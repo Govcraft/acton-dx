@@ -212,10 +212,10 @@ impl ActonHtmxState {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use acton_htmx::agents::{LoadSessionRequest, SaveSessionRequest};
+    /// use acton_htmx::agents::{LoadSession, SaveSession};
     ///
     /// async fn handler(State(state): State<ActonHtmxState>) {
-    ///     let (request, rx) = LoadSessionRequest::new(session_id);
+    ///     let (request, rx) = LoadSession::with_response(session_id);
     ///     state.session_manager().send(request).await;
     ///     let session_data = rx.await.ok().flatten();
     /// }
@@ -233,10 +233,10 @@ impl ActonHtmxState {
     /// # Example
     ///
     /// ```rust,ignore
-    /// use acton_htmx::agents::{GetOrCreateTokenRequest, ValidateTokenRequest};
+    /// use acton_htmx::agents::{GetOrCreateToken, ValidateToken};
     ///
     /// async fn handler(State(state): State<ActonHtmxState>) {
-    ///     let (request, rx) = GetOrCreateTokenRequest::new(session_id);
+    ///     let (request, rx) = GetOrCreateToken::new(session_id);
     ///     state.csrf_manager().send(request).await;
     ///     let token = rx.await.ok();
     /// }

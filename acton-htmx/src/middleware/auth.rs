@@ -32,6 +32,7 @@
 //! # }
 //! ```
 
+use super::helpers::is_htmx_request;
 use axum::{
     extract::Request,
     http::StatusCode,
@@ -136,19 +137,11 @@ impl AuthMiddleware {
             .is_some();
 
         if !is_authenticated {
-            // Check if this is an HTMX request
-            let is_htmx = parts
-                .headers
-                .get("HX-Request")
-                .and_then(|v| v.to_str().ok())
-                == Some("true");
-
-            if is_htmx {
-                // For HTMX requests, return 401 with HX-Redirect header
-                return Err(AuthMiddlewareError::Unauthorized(self.login_path));
-            }
-            // For regular requests, redirect to login
-            return Err(AuthMiddlewareError::RedirectToLogin(self.login_path));
+            // Use helper to create appropriate error for request type
+            return Err(AuthMiddlewareError::for_request(
+                is_htmx_request(&parts.headers),
+                self.login_path,
+            ));
         }
 
         // User is authenticated, continue with the request
@@ -168,6 +161,31 @@ pub enum AuthMiddlewareError {
     ///
     /// Contains the login path to redirect to
     RedirectToLogin(String),
+}
+
+impl AuthMiddlewareError {
+    /// Create an authentication error appropriate for the request type.
+    ///
+    /// This helper reduces duplication by encapsulating the HTMX detection logic.
+    ///
+    /// # Arguments
+    ///
+    /// * `is_htmx` - Whether the request is from HTMX
+    /// * `login_path` - The path to redirect to for login
+    ///
+    /// # Returns
+    ///
+    /// * [`Unauthorized`](Self::Unauthorized) for HTMX requests (returns 401 with HX-Redirect)
+    /// * [`RedirectToLogin`](Self::RedirectToLogin) for regular requests (returns 303 redirect)
+    #[must_use]
+    pub fn for_request(is_htmx: bool, login_path: impl Into<String>) -> Self {
+        let login_path = login_path.into();
+        if is_htmx {
+            Self::Unauthorized(login_path)
+        } else {
+            Self::RedirectToLogin(login_path)
+        }
+    }
 }
 
 impl IntoResponse for AuthMiddlewareError {
@@ -371,5 +389,23 @@ mod tests {
     async fn test_with_login_path_accepts_str() {
         let middleware = AuthMiddleware::with_login_path("/custom");
         assert_eq!(middleware.login_path, "/custom");
+    }
+
+    #[test]
+    fn test_for_request_returns_unauthorized_when_htmx() {
+        let error = AuthMiddlewareError::for_request(true, "/login");
+        assert!(matches!(error, AuthMiddlewareError::Unauthorized(path) if path == "/login"));
+    }
+
+    #[test]
+    fn test_for_request_returns_redirect_when_not_htmx() {
+        let error = AuthMiddlewareError::for_request(false, "/login");
+        assert!(matches!(error, AuthMiddlewareError::RedirectToLogin(path) if path == "/login"));
+    }
+
+    #[test]
+    fn test_for_request_accepts_string() {
+        let error = AuthMiddlewareError::for_request(true, "/custom/login".to_string());
+        assert!(matches!(error, AuthMiddlewareError::Unauthorized(path) if path == "/custom/login"));
     }
 }
