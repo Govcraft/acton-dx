@@ -12,25 +12,12 @@ edition = "2021"
 rust-version = "1.75"
 
 [dependencies]
-acton-htmx = { version = "0.1", features = ["full"] }
-acton-reactive = "5"
-axum = "0.8"
-tokio = { version = "1", features = ["full"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-validator = { version = "0.20", features = ["derive"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "macros", "migrate"] }
-figment = { version = "0.10", features = ["toml", "env"] }
-anyhow = "1"
-thiserror = "2"
+# acton-htmx re-exports: tokio, axum, tower, tower-http, tracing, tracing-subscriber,
+# serde, serde_json, sqlx, askama, validator, anyhow, thiserror, acton-reactive
+acton-htmx = { version = "1.0.0-beta", default-features = false, features = ["sqlite"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
-tower = { version = "0.5", features = ["util"] }
 
 [profile.dev]
 opt-level = 0
@@ -49,25 +36,12 @@ edition = "2021"
 rust-version = "1.75"
 
 [dependencies]
-acton-htmx = { version = "0.1", features = ["full"] }
-acton-reactive = "5"
-axum = "0.8"
-tokio = { version = "1", features = ["full"] }
-tower = "0.5"
-tower-http = { version = "0.6", features = ["fs", "trace", "cors"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-validator = { version = "0.20", features = ["derive"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "macros", "migrate"] }
-figment = { version = "0.10", features = ["toml", "env"] }
-anyhow = "1"
-thiserror = "2"
+# acton-htmx re-exports: tokio, axum, tower, tower-http, tracing, tracing-subscriber,
+# serde, serde_json, sqlx, askama, validator, anyhow, thiserror, acton-reactive
+acton-htmx = { version = "1.0.0-beta", default-features = false, features = ["postgres"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
-tower = { version = "0.5", features = ["util"] }
 
 [profile.dev]
 opt-level = 0
@@ -452,34 +426,54 @@ pub const MAIN_RS_SQLITE: &str = r#"//! {{project_name}} - Built with acton-htmx
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 #![warn(clippy::cargo)]
+#![allow(clippy::multiple_crate_versions)]
 
-use acton_htmx::{
-    prelude::*,
-    config::Config,
-    state::AppState,
-    middleware::{CsrfLayer, SecurityHeadersConfig, SecurityHeadersLayer, SessionLayer},
-    agents::{CsrfManagerAgent, SessionManagerAgent},
-};
-use acton_reactive::prelude::*;
-use anyhow::Result;
-use axum::{
-    routing::{get, post},
-    Router,
-};
-use sqlx::sqlite::SqlitePoolOptions;
-use tower_http::{
-    services::ServeDir,
-    trace::TraceLayer,
-};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use acton_htmx::prelude::*;
+use acton_htmx::agents::{CsrfManagerAgent, SessionManagerAgent};
+use acton_htmx::middleware::{SecurityHeadersConfig, SecurityHeadersLayer, SessionLayer};
+use std::sync::Arc;
 
 mod handlers;
 mod models;
 
 use handlers::{auth, home};
 
+/// Application state with acton-reactive agents
+#[derive(Clone)]
+pub struct AppState {
+    db: Arc<sqlx::SqlitePool>,
+    session_manager: acton_reactive::prelude::AgentHandle,
+    csrf_manager: acton_reactive::prelude::AgentHandle,
+}
+
+impl AppState {
+    /// Create new application state, spawning all agents
+    pub async fn new(
+        runtime: &mut acton_reactive::prelude::AgentRuntime,
+        db: sqlx::SqlitePool,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            db: Arc::new(db),
+            session_manager: SessionManagerAgent::spawn(runtime).await?,
+            csrf_manager: CsrfManagerAgent::spawn(runtime).await?,
+        })
+    }
+
+    /// Get the database pool
+    #[must_use]
+    pub fn db(&self) -> &sqlx::SqlitePool {
+        &self.db
+    }
+
+    /// Get the session manager agent handle
+    #[must_use]
+    pub const fn session_manager(&self) -> &acton_reactive::prelude::AgentHandle {
+        &self.session_manager
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
@@ -489,16 +483,13 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Load configuration
-    let config = Config::load()?;
-
     // Ensure data directory exists for SQLite
     std::fs::create_dir_all("data")?;
 
     // Initialize SQLite database (created automatically with mode=rwc)
-    let db = SqlitePoolOptions::new()
-        .max_connections(config.database.max_connections)
-        .connect(&config.database.url)
+    let db = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect("sqlite:data/dev.db?mode=rwc")
         .await?;
 
     // Run migrations automatically
@@ -506,54 +497,40 @@ async fn main() -> Result<()> {
     sqlx::migrate!("./migrations").run(&db).await?;
     tracing::info!("Migrations complete!");
 
-    // Initialize acton-reactive runtime
-    let acton_app = ActonApp::launch();
+    // Launch acton-reactive runtime
+    let mut runtime = acton_reactive::prelude::ActonApp::launch();
 
-    // Spawn session manager agent
-    let session_manager = acton_app
-        .spawn_agent::<SessionManagerAgent>("session-manager")
-        .await?;
+    // Create application state (spawns agents)
+    let state = AppState::new(&mut runtime, db).await?;
 
-    // Spawn CSRF manager agent
-    let csrf_manager = acton_app
-        .spawn_agent::<CsrfManagerAgent>("csrf-manager")
-        .await?;
+    // Build router with session middleware using the agent handle
+    let session_layer = SessionLayer::from_handle(state.session_manager().clone());
 
-    // Create application state
-    let state = AppState::new(
-        db,
-        acton_app.clone(),
-        session_manager,
-        csrf_manager,
-        config.clone(),
-    );
-
-    // Build router
-    let app = Router::new()
+    let app = axum::Router::new()
         // Public routes
-        .route("/", get(home::index))
-        .route("/login", get(auth::login_form).post(auth::login))
-        .route("/register", get(auth::register_form).post(auth::register))
-        .route("/logout", post(auth::logout))
+        .route("/", axum::routing::get(home::index))
+        .route("/login", axum::routing::get(auth::login_form).post(auth::login))
+        .route("/register", axum::routing::get(auth::register_form).post(auth::register))
+        .route("/logout", axum::routing::post(auth::logout))
         // Static files
-        .nest_service("/static", ServeDir::new("static"))
+        .nest_service("/static", tower_http::services::ServeDir::new("static"))
         // Middleware
-        .layer(SecurityHeadersLayer::new(
-            SecurityHeadersConfig::from_preset(&config.security_headers.preset),
-        ))
-        .layer(CsrfLayer::new())
-        .layer(SessionLayer::new(config.session.clone()))
-        .layer(TraceLayer::new_for_http())
+        .layer(SecurityHeadersLayer::new(SecurityHeadersConfig::development()))
+        .layer(session_layer)
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         // State
         .with_state(state);
 
     // Start server
-    let addr = format!("{}:{}", config.server.host, config.server.port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let addr = "127.0.0.1:3000";
+    let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    tracing::info!("Starting server on {}", addr);
+    tracing::info!("Starting server on http://{}", addr);
 
     axum::serve(listener, app).await?;
+
+    // Shutdown agents gracefully
+    runtime.shutdown_all().await?;
 
     Ok(())
 }
@@ -565,34 +542,54 @@ pub const MAIN_RS_POSTGRES: &str = r#"//! {{project_name}} - Built with acton-ht
 #![forbid(unsafe_code)]
 #![deny(clippy::all, clippy::pedantic, clippy::nursery)]
 #![warn(clippy::cargo)]
+#![allow(clippy::multiple_crate_versions)]
 
-use acton_htmx::{
-    prelude::*,
-    config::Config,
-    state::AppState,
-    middleware::{CsrfLayer, SecurityHeadersConfig, SecurityHeadersLayer, SessionLayer},
-    agents::{CsrfManagerAgent, SessionManagerAgent},
-};
-use acton_reactive::prelude::*;
-use anyhow::Result;
-use axum::{
-    routing::{get, post},
-    Router,
-};
-use sqlx::postgres::PgPoolOptions;
-use tower_http::{
-    services::ServeDir,
-    trace::TraceLayer,
-};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use acton_htmx::prelude::*;
+use acton_htmx::agents::{CsrfManagerAgent, SessionManagerAgent};
+use acton_htmx::middleware::{SecurityHeadersConfig, SecurityHeadersLayer, SessionLayer};
+use std::sync::Arc;
 
 mod handlers;
 mod models;
 
 use handlers::{auth, home};
 
+/// Application state with acton-reactive agents
+#[derive(Clone)]
+pub struct AppState {
+    db: Arc<sqlx::PgPool>,
+    session_manager: acton_reactive::prelude::AgentHandle,
+    csrf_manager: acton_reactive::prelude::AgentHandle,
+}
+
+impl AppState {
+    /// Create new application state, spawning all agents
+    pub async fn new(
+        runtime: &mut acton_reactive::prelude::AgentRuntime,
+        db: sqlx::PgPool,
+    ) -> anyhow::Result<Self> {
+        Ok(Self {
+            db: Arc::new(db),
+            session_manager: SessionManagerAgent::spawn(runtime).await?,
+            csrf_manager: CsrfManagerAgent::spawn(runtime).await?,
+        })
+    }
+
+    /// Get the database pool
+    #[must_use]
+    pub fn db(&self) -> &sqlx::PgPool {
+        &self.db
+    }
+
+    /// Get the session manager agent handle
+    #[must_use]
+    pub const fn session_manager(&self) -> &acton_reactive::prelude::AgentHandle {
+        &self.session_manager
+    }
+}
+
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     // Initialize tracing
     tracing_subscriber::registry()
         .with(
@@ -602,66 +599,53 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    // Load configuration
-    let config = Config::load()?;
-
-    // Initialize database
-    let db = PgPoolOptions::new()
-        .max_connections(config.database.max_connections)
-        .connect(&config.database.url)
+    // Initialize PostgreSQL database
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://localhost/{{project_name_snake}}_dev".to_string());
+    let db = sqlx::postgres::PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
         .await?;
 
     // Run migrations
+    tracing::info!("Running database migrations...");
     sqlx::migrate!("./migrations").run(&db).await?;
+    tracing::info!("Migrations complete!");
 
-    // Initialize acton-reactive runtime
-    let acton_app = ActonApp::launch();
+    // Launch acton-reactive runtime
+    let mut runtime = acton_reactive::prelude::ActonApp::launch();
 
-    // Spawn session manager agent
-    let session_manager = acton_app
-        .spawn_agent::<SessionManagerAgent>("session-manager")
-        .await?;
+    // Create application state (spawns agents)
+    let state = AppState::new(&mut runtime, db).await?;
 
-    // Spawn CSRF manager agent
-    let csrf_manager = acton_app
-        .spawn_agent::<CsrfManagerAgent>("csrf-manager")
-        .await?;
+    // Build router with session middleware using the agent handle
+    let session_layer = SessionLayer::from_handle(state.session_manager().clone());
 
-    // Create application state
-    let state = AppState::new(
-        db,
-        acton_app.clone(),
-        session_manager,
-        csrf_manager,
-        config.clone(),
-    );
-
-    // Build router
-    let app = Router::new()
+    let app = axum::Router::new()
         // Public routes
-        .route("/", get(home::index))
-        .route("/login", get(auth::login_form).post(auth::login))
-        .route("/register", get(auth::register_form).post(auth::register))
-        .route("/logout", post(auth::logout))
+        .route("/", axum::routing::get(home::index))
+        .route("/login", axum::routing::get(auth::login_form).post(auth::login))
+        .route("/register", axum::routing::get(auth::register_form).post(auth::register))
+        .route("/logout", axum::routing::post(auth::logout))
         // Static files
-        .nest_service("/static", ServeDir::new("static"))
+        .nest_service("/static", tower_http::services::ServeDir::new("static"))
         // Middleware
-        .layer(SecurityHeadersLayer::new(
-            SecurityHeadersConfig::from_preset(&config.security_headers.preset),
-        ))
-        .layer(CsrfLayer::new())
-        .layer(SessionLayer::new(config.session.clone()))
-        .layer(TraceLayer::new_for_http())
+        .layer(SecurityHeadersLayer::new(SecurityHeadersConfig::development()))
+        .layer(session_layer)
+        .layer(tower_http::trace::TraceLayer::new_for_http())
         // State
         .with_state(state);
 
     // Start server
-    let addr = format!("{}:{}", config.server.host, config.server.port);
-    let listener = tokio::net::TcpListener::bind(&addr).await?;
+    let addr = "127.0.0.1:3000";
+    let listener = tokio::net::TcpListener::bind(addr).await?;
 
-    tracing::info!("Starting server on {}", addr);
+    tracing::info!("Starting server on http://{}", addr);
 
     axum::serve(listener, app).await?;
+
+    // Shutdown agents gracefully
+    runtime.shutdown_all().await?;
 
     Ok(())
 }
@@ -673,30 +657,23 @@ pub const MAIN_RS: &str = MAIN_RS_POSTGRES;
 /// Handlers module template
 pub const HANDLERS_MOD: &str = r"//! HTTP request handlers
 
-pub mod home;
 pub mod auth;
+pub mod home;
 ";
 
 /// Home handler template
 pub const HANDLERS_HOME: &str = r#"//! Home page handlers
 
-use acton_htmx::prelude::*;
 use askama::Template;
 use axum::response::Html;
 
 #[derive(Template)]
 #[template(path = "home.html")]
-struct HomeTemplate {
-    title: String,
-}
+struct HomeTemplate;
 
 /// Home page
 pub async fn index() -> Html<String> {
-    let template = HomeTemplate {
-        title: "Welcome".to_string(),
-    };
-
-    Html(template.render().unwrap())
+    Html(HomeTemplate.render().unwrap())
 }
 "#;
 
@@ -704,56 +681,25 @@ pub async fn index() -> Html<String> {
 // Handler Templates
 // =============================================================================
 
-/// Authentication handler template (database-agnostic, uses framework's User model)
-/// The framework's User model handles `SQLite` vs `PostgreSQL` differences internally
+/// Authentication handler template (placeholder for user implementation)
 pub const HANDLERS_AUTH_SQLITE: &str = r#"//! Authentication handlers
+//!
+//! This module provides placeholder authentication endpoints.
+//! Implement your own User model and authentication logic as needed.
 
-use acton_htmx::{
-    prelude::*,
-    state::AppState,
-    extractors::{Session, ValidatedForm},
-    auth::{
-        User, EmailAddress, CreateUser, FlashMessage, FlashLevel,
-        UserError,
-    },
-};
 use askama::Template;
-use axum::{
-    extract::State,
-    response::{Html, IntoResponse, Redirect},
-    http::StatusCode,
-};
-use serde::Deserialize;
-use validator::Validate;
+use axum::response::Html;
 
 #[derive(Template)]
 #[template(path = "auth/login.html")]
-struct LoginTemplate {
-    error: Option<String>,
+pub struct LoginTemplate {
+    pub error: Option<String>,
 }
 
 #[derive(Template)]
 #[template(path = "auth/register.html")]
-struct RegisterTemplate {
-    error: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Validate)]
-pub struct LoginForm {
-    #[validate(email)]
-    pub email: String,
-    #[validate(length(min = 8))]
-    pub password: String,
-}
-
-#[derive(Debug, Deserialize, Validate)]
-pub struct RegisterForm {
-    #[validate(email)]
-    pub email: String,
-    #[validate(length(min = 8, max = 100))]
-    pub password: String,
-    #[validate(must_match(other = "password"))]
-    pub password_confirmation: String,
+pub struct RegisterTemplate {
+    pub error: Option<String>,
 }
 
 /// Show login form
@@ -762,138 +708,10 @@ pub async fn login_form() -> Html<String> {
     Html(template.render().unwrap())
 }
 
-/// Process login
-pub async fn login(
-    State(state): State<AppState>,
-    mut session: Session,
-    ValidatedForm(form): ValidatedForm<LoginForm>,
-) -> impl IntoResponse {
-    // Parse and validate email address
-    let email = match EmailAddress::parse(&form.email) {
-        Ok(email) => email,
-        Err(_) => {
-            let template = LoginTemplate {
-                error: Some("Invalid email address format".to_string()),
-            };
-            return (StatusCode::BAD_REQUEST, Html(template.render().unwrap())).into_response();
-        }
-    };
-
-    // Authenticate user against database
-    let user = match User::authenticate(&email, &form.password, state.database_pool()).await {
-        Ok(user) => user,
-        Err(UserError::InvalidCredentials) => {
-            let template = LoginTemplate {
-                error: Some("Invalid email or password".to_string()),
-            };
-            return (StatusCode::UNAUTHORIZED, Html(template.render().unwrap())).into_response();
-        }
-        Err(e) => {
-            tracing::error!("Authentication error: {}", e);
-            let template = LoginTemplate {
-                error: Some("An error occurred during login. Please try again.".to_string()),
-            };
-            return (StatusCode::INTERNAL_SERVER_ERROR, Html(template.render().unwrap())).into_response();
-        }
-    };
-
-    // Set user ID in session
-    session.set_user_id(Some(user.id));
-
-    // Add success flash message
-    session.add_flash(FlashMessage {
-        level: FlashLevel::Success,
-        message: "Successfully logged in!".to_string(),
-    });
-
-    Redirect::to("/").into_response()
-}
-
 /// Show registration form
 pub async fn register_form() -> Html<String> {
     let template = RegisterTemplate { error: None };
     Html(template.render().unwrap())
-}
-
-/// Process registration
-pub async fn register(
-    State(state): State<AppState>,
-    mut session: Session,
-    ValidatedForm(form): ValidatedForm<RegisterForm>,
-) -> impl IntoResponse {
-    // Parse and validate email address
-    let email = match EmailAddress::parse(&form.email) {
-        Ok(email) => email,
-        Err(e) => {
-            let template = RegisterTemplate {
-                error: Some(format!("Invalid email address: {e}")),
-            };
-            return (StatusCode::BAD_REQUEST, Html(template.render().unwrap())).into_response();
-        }
-    };
-
-    // Verify password confirmation matches
-    if form.password != form.password_confirmation {
-        let template = RegisterTemplate {
-            error: Some("Passwords do not match".to_string()),
-        };
-        return (StatusCode::BAD_REQUEST, Html(template.render().unwrap())).into_response();
-    }
-
-    // Create user in database with hashed password
-    let create_user = CreateUser {
-        email,
-        password: form.password,
-    };
-
-    let user = match User::create(create_user, state.database_pool()).await {
-        Ok(user) => user,
-        Err(UserError::WeakPassword(msg)) => {
-            let template = RegisterTemplate {
-                error: Some(format!("Password requirements not met: {msg}")),
-            };
-            return (StatusCode::BAD_REQUEST, Html(template.render().unwrap())).into_response();
-        }
-        Err(UserError::DatabaseError(sqlx::Error::Database(db_err)))
-            if db_err.message().contains("duplicate") || db_err.message().contains("unique") => {
-            let template = RegisterTemplate {
-                error: Some("An account with this email already exists".to_string()),
-            };
-            return (StatusCode::CONFLICT, Html(template.render().unwrap())).into_response();
-        }
-        Err(e) => {
-            tracing::error!("Registration error: {}", e);
-            let template = RegisterTemplate {
-                error: Some("An error occurred during registration. Please try again.".to_string()),
-            };
-            return (StatusCode::INTERNAL_SERVER_ERROR, Html(template.render().unwrap())).into_response();
-        }
-    };
-
-    // Auto-login after successful registration
-    session.set_user_id(Some(user.id));
-
-    // Add success flash message
-    session.add_flash(FlashMessage {
-        level: FlashLevel::Success,
-        message: "Account created successfully! Welcome!".to_string(),
-    });
-
-    Redirect::to("/").into_response()
-}
-
-/// Logout
-pub async fn logout(mut session: Session) -> impl IntoResponse {
-    // Clear user ID from session
-    session.set_user_id(None);
-
-    // Add info flash message
-    session.add_flash(FlashMessage {
-        level: FlashLevel::Info,
-        message: "You have been logged out.".to_string(),
-    });
-
-    Redirect::to("/login").into_response()
 }
 "#;
 
@@ -906,15 +724,11 @@ pub const HANDLERS_AUTH: &str = HANDLERS_AUTH_POSTGRES;
 /// Models module template
 pub const MODELS_MOD: &str = r"//! Domain models
 //!
-//! Re-exports framework types and can include application-specific models.
+//! Add your application-specific models here.
 
-// Re-export User model from framework
-pub use acton_htmx::auth::{User, EmailAddress, CreateUser};
-
-// Add your application-specific models here
 // Example:
+// pub mod user;
 // pub mod post;
-// pub use post::Post;
 ";
 
 /// User model template (no longer needed as we use framework's User)

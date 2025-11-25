@@ -171,9 +171,21 @@ pub mod prelude {
         OAuth2Agent, initiate_oauth, handle_oauth_callback, unlink_oauth_account,
     };
 
-    // Re-export key dependencies
+    // Re-export key dependencies for framework users
+    // These allow users to avoid adding these crates to their Cargo.toml
+    pub use acton_reactive;
+    pub use anyhow;
     pub use askama;
     pub use axum;
+    pub use serde;
+    pub use serde_json;
+    pub use sqlx;
+    pub use thiserror;
+    pub use tokio;
+    pub use tower;
+    pub use tower_http;
+    pub use tracing;
+    pub use tracing_subscriber;
     pub use validator;
 
     // Convenience for JSON responses

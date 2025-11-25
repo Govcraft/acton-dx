@@ -84,7 +84,6 @@ impl ProjectTemplate {
         self.write_file(output_dir, "src/handlers/auth.rs", handlers_auth, &context)?;
 
         self.write_file(output_dir, "src/models/mod.rs", MODELS_MOD, &context)?;
-        self.write_file(output_dir, "src/models/user.rs", MODELS_USER, &context)?;
         self.write_file(output_dir, "templates/layouts/base.html", TEMPLATE_BASE, &context)?;
         self.write_file(output_dir, "templates/layouts/app.html", TEMPLATE_APP, &context)?;
         self.write_file(output_dir, "templates/auth/login.html", TEMPLATE_LOGIN, &context)?;
