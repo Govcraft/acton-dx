@@ -16,6 +16,14 @@
 //! ```
 
 use crate::auth::session::FlashMessage;
+use crate::template::FrameworkTemplates;
+use std::sync::OnceLock;
+
+/// Get or initialize the framework templates (lazy singleton)
+fn templates() -> &'static FrameworkTemplates {
+    static TEMPLATES: OnceLock<FrameworkTemplates> = OnceLock::new();
+    TEMPLATES.get_or_init(|| FrameworkTemplates::new().expect("Failed to initialize templates"))
+}
 
 /// Generate CSRF token input field
 ///
@@ -52,7 +60,9 @@ pub fn csrf_token() -> String {
 /// Used when the token is provided from the session.
 #[must_use]
 pub fn csrf_token_with(token: &str) -> String {
-    format!(r#"<input type="hidden" name="_csrf_token" value="{token}">"#)
+    templates()
+        .render("forms/csrf-input.html", minijinja::context! { token => token })
+        .unwrap_or_else(|_| format!(r#"<input type="hidden" name="_csrf_token" value="{token}">"#))
 }
 
 /// Render flash messages as HTML
@@ -101,25 +111,47 @@ pub fn csrf_token_with(token: &str) -> String {
 /// ```
 #[must_use]
 pub fn flash_messages(messages: &[FlashMessage]) -> String {
-    use std::fmt::Write;
-
     if messages.is_empty() {
         return String::new();
     }
 
+    // Convert to serializable format for template
+    let msgs: Vec<_> = messages
+        .iter()
+        .map(|m| {
+            minijinja::context! {
+                css_class => m.css_class(),
+                title => m.title.as_deref(),
+                message => &m.message,
+            }
+        })
+        .collect();
+
+    templates()
+        .render(
+            "flash/container.html",
+            minijinja::context! {
+                container_class => "flash-messages",
+                messages => msgs,
+            },
+        )
+        .unwrap_or_else(|e| {
+            tracing::error!(error = ?e, "Failed to render flash messages template");
+            fallback_flash_messages(messages)
+        })
+}
+
+/// Fallback flash message rendering if template fails
+fn fallback_flash_messages(messages: &[FlashMessage]) -> String {
+    use std::fmt::Write;
+
     let mut html = String::from(r#"<div class="flash-messages" role="status" aria-live="polite">"#);
 
     for msg in messages {
-        let _ = write!(
-            html,
-            r#"<div class="{}" role="alert">"#,
-            msg.css_class()
-        );
-
+        let _ = write!(html, r#"<div class="{}" role="alert">"#, msg.css_class());
         if let Some(title) = &msg.title {
             let _ = write!(html, "<strong>{}</strong> ", escape_html(title));
         }
-
         let _ = write!(html, "<span>{}</span>", escape_html(&msg.message));
         html.push_str("</div>");
     }
@@ -396,20 +428,39 @@ pub fn escape_html(s: &str) -> String {
 /// ```
 #[must_use]
 pub fn validation_errors_for(errors: &validator::ValidationErrors, field: &str) -> String {
-    use std::fmt::Write;
-
     errors.field_errors().get(field).map_or_else(String::new, |field_errors| {
-        let mut html = String::from(r#"<div class="field-errors">"#);
-        for error in *field_errors {
-            let message = error.message.as_ref().map_or_else(
-                || format!("{field}: {}", error.code),
-                ToString::to_string,
-            );
-            let _ = write!(html, r#"<span class="error">{message}</span>"#);
-        }
-        html.push_str("</div>");
-        html
+        let error_messages: Vec<String> = field_errors
+            .iter()
+            .map(|error| {
+                error.message.as_ref().map_or_else(
+                    || format!("{field}: {}", error.code),
+                    ToString::to_string,
+                )
+            })
+            .collect();
+
+        templates()
+            .render(
+                "validation/field-errors.html",
+                minijinja::context! {
+                    container_class => "field-errors",
+                    error_class => "error",
+                    errors => error_messages,
+                },
+            )
+            .unwrap_or_else(|_| fallback_field_errors(&error_messages))
     })
+}
+
+/// Fallback field error rendering if template fails
+fn fallback_field_errors(errors: &[String]) -> String {
+    use std::fmt::Write;
+    let mut html = String::from(r#"<div class="field-errors">"#);
+    for message in errors {
+        let _ = write!(html, r#"<span class="error">{message}</span>"#);
+    }
+    html.push_str("</div>");
+    html
 }
 
 /// Check if a field has validation errors
@@ -472,21 +523,40 @@ pub fn error_class(errors: &validator::ValidationErrors, field: &str) -> &'stati
 /// ```
 #[must_use]
 pub fn validation_errors_list(errors: &validator::ValidationErrors) -> String {
-    use std::fmt::Write;
-
     if errors.is_empty() {
         return String::new();
     }
 
+    let error_messages: Vec<String> = errors
+        .field_errors()
+        .iter()
+        .flat_map(|(field, field_errors)| {
+            field_errors.iter().map(move |error| {
+                error.message.as_ref().map_or_else(
+                    || format!("{field}: {}", error.code),
+                    ToString::to_string,
+                )
+            })
+        })
+        .collect();
+
+    templates()
+        .render(
+            "validation/validation-summary.html",
+            minijinja::context! {
+                container_class => "validation-errors",
+                errors => error_messages,
+            },
+        )
+        .unwrap_or_else(|_| fallback_validation_summary(&error_messages))
+}
+
+/// Fallback validation summary rendering if template fails
+fn fallback_validation_summary(errors: &[String]) -> String {
+    use std::fmt::Write;
     let mut html = String::from(r#"<div class="validation-errors"><ul>"#);
-    for (field, field_errors) in errors.field_errors() {
-        for error in field_errors {
-            let message = error.message.as_ref().map_or_else(
-                || format!("{field}: {}", error.code),
-                ToString::to_string,
-            );
-            let _ = write!(html, "<li>{message}</li>");
-        }
+    for message in errors {
+        let _ = write!(html, "<li>{message}</li>");
     }
     html.push_str("</ul></div>");
     html
