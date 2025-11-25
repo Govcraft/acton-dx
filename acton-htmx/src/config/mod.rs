@@ -268,6 +268,7 @@ pub enum FailureMode {
     Open,
 }
 
+#[cfg(feature = "cedar")]
 impl Default for FailureMode {
     fn default() -> Self {
         if cfg!(debug_assertions) {
