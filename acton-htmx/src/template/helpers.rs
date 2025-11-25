@@ -114,6 +114,11 @@ pub fn csrf_token_with(token: &str) -> String {
 ///     MyTemplate { flash_html: flash_messages(&messages) }
 /// }
 /// ```
+///
+/// # Panics
+///
+/// Panics if the flash messages template cannot be rendered. Ensure templates are
+/// initialized via `acton-htmx templates init` before using this function.
 #[must_use]
 pub fn flash_messages(messages: &[FlashMessage]) -> String {
     if messages.is_empty() {
@@ -409,6 +414,11 @@ pub fn escape_html(s: &str) -> String {
 /// let errors = ValidationErrors::new();
 /// let html = validation_errors_for(&errors, "email");
 /// ```
+///
+/// # Panics
+///
+/// Panics if the field errors template cannot be rendered. Ensure templates are
+/// initialized via `acton-htmx templates init` before using this function.
 #[must_use]
 pub fn validation_errors_for(errors: &validator::ValidationErrors, field: &str) -> String {
     errors.field_errors().get(field).map_or_else(String::new, |field_errors| {
@@ -493,6 +503,11 @@ pub fn error_class(errors: &validator::ValidationErrors, field: &str) -> &'stati
 /// let errors = ValidationErrors::new();
 /// let html = validation_errors_list(&errors);
 /// ```
+///
+/// # Panics
+///
+/// Panics if the validation summary template cannot be rendered. Ensure templates are
+/// initialized via `acton-htmx templates init` before using this function.
 #[must_use]
 pub fn validation_errors_list(errors: &validator::ValidationErrors) -> String {
     if errors.is_empty() {

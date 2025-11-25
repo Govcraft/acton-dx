@@ -92,22 +92,20 @@ impl FrameworkTemplates {
         // Check if at least one required template exists
         let test_template = "forms/form.html";
 
-        let config_exists = config_dir
-            .map(|d| d.join(test_template).exists())
-            .unwrap_or(false);
+        let config_exists = config_dir.is_some_and(|d| d.join(test_template).exists());
 
-        let cache_exists = cache_dir
-            .map(|d| d.join(test_template).exists())
-            .unwrap_or(false);
+        let cache_exists = cache_dir.is_some_and(|d| d.join(test_template).exists());
 
         if !config_exists && !cache_exists {
             return Err(FrameworkTemplateError::TemplatesNotInitialized {
-                config_dir: config_dir
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "~/.config/acton-htmx/templates/framework".to_string()),
-                cache_dir: cache_dir
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "~/.cache/acton-htmx/templates/framework".to_string()),
+                config_dir: config_dir.map_or_else(
+                    || "~/.config/acton-htmx/templates/framework".to_string(),
+                    |p| p.display().to_string(),
+                ),
+                cache_dir: cache_dir.map_or_else(
+                    || "~/.cache/acton-htmx/templates/framework".to_string(),
+                    |p| p.display().to_string(),
+                ),
             });
         }
 
@@ -202,7 +200,6 @@ impl FrameworkTemplates {
     }
 
     /// Get all embedded template names
-    #[must_use]
     pub fn embedded_template_names() -> impl Iterator<Item = &'static str> {
         EMBEDDED_TEMPLATES.keys().copied()
     }

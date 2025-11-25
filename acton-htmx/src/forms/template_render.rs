@@ -33,7 +33,7 @@ impl<'t> TemplateFormRenderer<'t> {
 
     /// Create a renderer with custom options
     #[must_use]
-    pub fn with_options(templates: &'t FrameworkTemplates, options: FormRenderOptions) -> Self {
+    pub const fn with_options(templates: &'t FrameworkTemplates, options: FormRenderOptions) -> Self {
         Self { templates, options }
     }
 
@@ -50,7 +50,7 @@ impl<'t> TemplateFormRenderer<'t> {
         }
 
         // Build HTMX attributes list
-        let hx_attrs = self.build_htmx_form_attrs(form);
+        let hx_attrs = Self::build_htmx_form_attrs(form);
 
         // Render the form wrapper
         let html = self.templates.render(
@@ -111,20 +111,20 @@ impl<'t> TemplateFormRenderer<'t> {
 
         // Render label if present
         let label_html = if let Some(ref label) = field.label {
-            if !is_checkbox {
-                self.render_label(field.effective_id(), label, field.flags.required)?
-            } else {
+            if is_checkbox {
                 String::new()
+            } else {
+                self.render_label(field.effective_id(), label, field.flags.required)?
             }
         } else {
             String::new()
         };
 
         // Render errors
-        let errors_html = if !field_errors.is_empty() {
-            self.render_field_errors(&field_errors)?
-        } else {
+        let errors_html = if field_errors.is_empty() {
             String::new()
+        } else {
+            self.render_field_errors(&field_errors)?
         };
 
         // Wrap in field wrapper
@@ -155,7 +155,7 @@ impl<'t> TemplateFormRenderer<'t> {
         has_errors: bool,
     ) -> Result<String, FormRenderError> {
         let class = self.build_input_class(field, has_errors);
-        let extra_attrs = self.build_field_attrs(field);
+        let extra_attrs = Self::build_field_attrs(field);
 
         let html = self.templates.render(
             "forms/input.html",
@@ -200,7 +200,7 @@ impl<'t> TemplateFormRenderer<'t> {
         has_errors: bool,
     ) -> Result<String, FormRenderError> {
         let class = self.build_input_class(field, has_errors);
-        let extra_attrs = self.build_field_attrs(field);
+        let extra_attrs = Self::build_field_attrs(field);
 
         let html = self.templates.render(
             "forms/textarea.html",
@@ -233,7 +233,7 @@ impl<'t> TemplateFormRenderer<'t> {
         has_errors: bool,
     ) -> Result<String, FormRenderError> {
         let class = self.build_input_class(field, has_errors);
-        let extra_attrs = self.build_field_attrs(field);
+        let extra_attrs = Self::build_field_attrs(field);
 
         // Build options with selected state
         let select_options: Vec<SelectOptionCtx> = options
@@ -271,7 +271,7 @@ impl<'t> TemplateFormRenderer<'t> {
         has_errors: bool,
     ) -> Result<String, FormRenderError> {
         let class = self.build_input_class(field, has_errors);
-        let extra_attrs = self.build_field_attrs(field);
+        let extra_attrs = Self::build_field_attrs(field);
 
         let html = self.templates.render(
             "forms/checkbox.html",
@@ -380,7 +380,7 @@ impl<'t> TemplateFormRenderer<'t> {
     }
 
     /// Build extra attributes including HTMX and data attributes
-    fn build_field_attrs(&self, field: &FormField) -> Vec<(String, String)> {
+    fn build_field_attrs(field: &FormField) -> Vec<(String, String)> {
         let mut attrs = Vec::new();
 
         // HTMX attributes
@@ -432,7 +432,7 @@ impl<'t> TemplateFormRenderer<'t> {
     }
 
     /// Build HTMX form attributes as string list
-    fn build_htmx_form_attrs(&self, form: &FormBuilder<'_>) -> Vec<String> {
+    fn build_htmx_form_attrs(form: &FormBuilder<'_>) -> Vec<String> {
         let mut attrs = Vec::new();
 
         if let Some(ref url) = form.htmx.get {
