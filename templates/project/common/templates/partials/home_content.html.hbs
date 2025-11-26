@@ -1,0 +1,23 @@
+<div class="home">
+    <h1>Welcome to {{project_name}}!</h1>
+
+    {%- if user_id.is_some() %}
+    <p class="welcome-message">You're logged in and ready to go!</p>
+    {%- else %}
+    <p>Get started by <a href="/login">logging in</a> or <a href="/register">creating an account</a>.</p>
+    {%- endif %}
+
+    <h2>Getting Started</h2>
+    <ul>
+        <li>Edit templates in <code>templates/</code></li>
+        <li>Add handlers in <code>src/handlers/</code></li>
+        <li>Define models in <code>src/models/</code></li>
+        <li>Update routes in <code>src/main.rs</code></li>
+    </ul>
+
+    <h2>Documentation</h2>
+    <ul>
+        <li><a href="https://htmx.org" target="_blank">HTMX Documentation</a></li>
+        <li><a href="https://github.com/govcraft/acton-dx" target="_blank">Acton DX Repository</a></li>
+    </ul>
+</div>

@@ -1,5 +1,10 @@
-<nav>
+<nav id="main-nav">
     <a href="/">Home</a>
+    {%- if user_id.is_some() %}
+    <span class="nav-user">Logged in</span>
+    <button hx-post="/logout" hx-target="#main-content" class="nav-logout">Logout</button>
+    {%- else %}
     <a href="/login">Login</a>
     <a href="/register">Register</a>
+    {%- endif %}
 </nav>

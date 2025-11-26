@@ -10,7 +10,7 @@
     <div class="error">{{ error }}</div>
     {%- endif %}
 
-    <form hx-post="/register" hx-target="#flash-messages" hx-swap="innerHTML">
+    <form hx-post="/register" hx-target="#main-content" hx-swap="innerHTML">
         <div class="field">
             <label for="email">Email</label>
             <input type="email" id="email" name="email" required>
