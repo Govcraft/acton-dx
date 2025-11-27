@@ -9,6 +9,7 @@ use axum::response::Html;
 #[template(path = "home.html")]
 pub struct HomeTemplate {
     pub user_id: Option<i64>,
+    pub user_name: Option<String>,
     pub flash_messages: Vec<FlashMessage>,
 }
 
@@ -16,6 +17,7 @@ pub struct HomeTemplate {
 pub async fn index(session: SessionExtractor) -> Html<String> {
     let template = HomeTemplate {
         user_id: session.1.user_id,
+        user_name: session.1.user_name,
         flash_messages: session.1.flash_messages,
     };
     Html(template.render().unwrap())

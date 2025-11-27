@@ -22,8 +22,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, sqlx::FromRow)]
 struct UserRow {
     id: i64,
-    #[allow(dead_code)]
-    email: String,
+    first_name: String,
     password_hash: String,
 }
 
@@ -35,6 +34,7 @@ struct UserRow {
 #[template(path = "auth/login.html")]
 pub struct LoginTemplate {
     pub user_id: Option<i64>,
+    pub user_name: Option<String>,
     pub error: Option<String>,
     pub flash_messages: Vec<FlashMessage>,
 }
@@ -43,6 +43,7 @@ pub struct LoginTemplate {
 #[template(path = "auth/register.html")]
 pub struct RegisterTemplate {
     pub user_id: Option<i64>,
+    pub user_name: Option<String>,
     pub error: Option<String>,
     pub flash_messages: Vec<FlashMessage>,
 }
@@ -52,6 +53,7 @@ pub struct RegisterTemplate {
 #[template(path = "partials/auth_success.html")]
 pub struct AuthSuccessTemplate {
     pub user_id: Option<i64>,
+    pub user_name: Option<String>,
     pub flash_messages: Vec<FlashMessage>,
 }
 
@@ -75,9 +77,25 @@ pub struct LoginForm {
 
 #[derive(Debug, Deserialize)]
 pub struct RegisterForm {
+    pub first_name: String,
     pub email: String,
     pub password: String,
     pub password_confirm: String,
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/// Create a registration error response
+fn register_error(message: &str) -> Response {
+    let template = RegisterTemplate {
+        user_id: None,
+        user_name: None,
+        error: Some(message.to_string()),
+        flash_messages: vec![],
+    };
+    Html(template.render().unwrap()).into_response()
 }
 
 // =============================================================================
@@ -90,6 +108,7 @@ pub async fn login_form(
 ) -> Html<String> {
     let template = LoginTemplate {
         user_id: session.1.user_id,
+        user_name: session.1.user_name,
         error: None,
         flash_messages: session.1.flash_messages,
     };
@@ -106,6 +125,7 @@ pub async fn login(
     if form.email.is_empty() || form.password.is_empty() {
         let template = LoginTemplate {
             user_id: None,
+            user_name: None,
             error: Some("Email and password are required".to_string()),
             flash_messages: vec![],
         };
@@ -114,7 +134,7 @@ pub async fn login(
 
     // Find user by email
     let user = match sqlx::query_as::<_, UserRow>(
-        "SELECT id, email, password_hash FROM users WHERE email = ?"
+        "SELECT id, first_name, password_hash FROM users WHERE email = ?"
     )
     .bind(form.email.to_lowercase())
     .fetch_optional(state.db())
@@ -124,6 +144,7 @@ pub async fn login(
         Ok(None) => {
             let template = LoginTemplate {
                 user_id: None,
+                user_name: None,
                 error: Some("Invalid email or password".to_string()),
                 flash_messages: vec![],
             };
@@ -133,6 +154,7 @@ pub async fn login(
             tracing::error!("Database error during login: {}", e);
             let template = LoginTemplate {
                 user_id: None,
+                user_name: None,
                 error: Some("An error occurred. Please try again.".to_string()),
                 flash_messages: vec![],
             };
@@ -142,18 +164,21 @@ pub async fn login(
 
     // Verify password
     if matches!(verify_password(&form.password, &user.password_hash), Ok(true)) {
-        // Set user ID in session
+        // Set user info in session
         session.1.user_id = Some(user.id);
+        session.1.user_name = Some(user.first_name.clone());
 
         // Return OOB response with updated nav, content, and flash
         let template = AuthSuccessTemplate {
             user_id: Some(user.id),
-            flash_messages: vec![FlashMessage::success("Successfully logged in!")],
+            user_name: Some(user.first_name.clone()),
+            flash_messages: vec![FlashMessage::success(format!("Welcome back, {}!", &user.first_name))],
         };
         Html(template.render().unwrap()).into_response()
     } else {
         let template = LoginTemplate {
             user_id: None,
+            user_name: None,
             error: Some("Invalid email or password".to_string()),
             flash_messages: vec![],
         };
@@ -167,6 +192,7 @@ pub async fn register_form(
 ) -> Html<String> {
     let template = RegisterTemplate {
         user_id: session.1.user_id,
+        user_name: session.1.user_name,
         error: None,
         flash_messages: session.1.flash_messages,
     };
@@ -180,48 +206,27 @@ pub async fn register(
     Form(form): Form<RegisterForm>,
 ) -> Response {
     // Validate form
+    if form.first_name.trim().is_empty() {
+        return register_error("First name is required");
+    }
     if form.email.is_empty() {
-        let template = RegisterTemplate {
-            user_id: None,
-            error: Some("Email is required".to_string()),
-            flash_messages: vec![],
-        };
-        return Html(template.render().unwrap()).into_response();
+        return register_error("Email is required");
     }
-
     if form.password.len() < 8 {
-        let template = RegisterTemplate {
-            user_id: None,
-            error: Some("Password must be at least 8 characters".to_string()),
-            flash_messages: vec![],
-        };
-        return Html(template.render().unwrap()).into_response();
+        return register_error("Password must be at least 8 characters");
     }
-
     if form.password != form.password_confirm {
-        let template = RegisterTemplate {
-            user_id: None,
-            error: Some("Passwords do not match".to_string()),
-            flash_messages: vec![],
-        };
-        return Html(template.render().unwrap()).into_response();
+        return register_error("Passwords do not match");
     }
 
     // Check if email already exists
-    let exists = sqlx::query_scalar::<_, i32>(
-        "SELECT 1 FROM users WHERE email = ?"
-    )
-    .bind(form.email.to_lowercase())
-    .fetch_optional(state.db())
-    .await;
+    let exists = sqlx::query_scalar::<_, i32>("SELECT 1 FROM users WHERE email = ?")
+        .bind(form.email.to_lowercase())
+        .fetch_optional(state.db())
+        .await;
 
     if matches!(exists, Ok(Some(_))) {
-        let template = RegisterTemplate {
-            user_id: None,
-            error: Some("Email already registered".to_string()),
-            flash_messages: vec![],
-        };
-        return Html(template.render().unwrap()).into_response();
+        return register_error("Email already registered");
     }
 
     // Hash password
@@ -229,23 +234,20 @@ pub async fn register(
         Ok(hash) => hash,
         Err(e) => {
             tracing::error!("Password hashing failed: {}", e);
-            let template = RegisterTemplate {
-                user_id: None,
-                error: Some("An error occurred. Please try again.".to_string()),
-                flash_messages: vec![],
-            };
-            return Html(template.render().unwrap()).into_response();
+            return register_error("An error occurred. Please try again.");
         }
     };
 
     // Create user
+    let first_name = form.first_name.trim().to_string();
     let result = sqlx::query(
         r#"
-        INSERT INTO users (email, password_hash, roles, permissions, email_verified)
-        VALUES (?, ?, '["user"]', '[]', 0)
+        INSERT INTO users (email, first_name, password_hash, roles, permissions, email_verified)
+        VALUES (?, ?, ?, '["user"]', '[]', 0)
         "#
     )
     .bind(form.email.to_lowercase())
+    .bind(&first_name)
     .bind(&password_hash)
     .execute(state.db())
     .await;
@@ -256,22 +258,19 @@ pub async fn register(
 
             // Auto-login after registration
             session.1.user_id = Some(user_id);
+            session.1.user_name = Some(first_name.clone());
 
             // Return OOB response with updated nav, content, and flash
             let template = AuthSuccessTemplate {
                 user_id: Some(user_id),
-                flash_messages: vec![FlashMessage::success("Account created successfully! Welcome!")],
+                user_name: Some(first_name.clone()),
+                flash_messages: vec![FlashMessage::success(format!("Welcome, {first_name}!"))],
             };
             Html(template.render().unwrap()).into_response()
         }
         Err(e) => {
             tracing::error!("Failed to create user: {}", e);
-            let template = RegisterTemplate {
-                user_id: None,
-                error: Some("Failed to create account. Please try again.".to_string()),
-                flash_messages: vec![],
-            };
-            Html(template.render().unwrap()).into_response()
+            register_error("Failed to create account. Please try again.")
         }
     }
 }
@@ -280,8 +279,9 @@ pub async fn register(
 pub async fn logout(
     mut session: SessionExtractor,
 ) -> Response {
-    // Clear user ID from session
+    // Clear user info from session
     session.1.user_id = None;
+    session.1.user_name = None;
 
     // Return OOB response with login form, updated nav, and flash
     let template = LogoutSuccessTemplate {

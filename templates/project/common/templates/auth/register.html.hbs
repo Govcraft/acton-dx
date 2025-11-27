@@ -12,6 +12,11 @@
 
     <form hx-post="/register" hx-target="#main-content" hx-swap="innerHTML">
         <div class="field">
+            <label for="first_name">First Name</label>
+            <input type="text" id="first_name" name="first_name" required>
+        </div>
+
+        <div class="field">
             <label for="email">Email</label>
             <input type="email" id="email" name="email" required>
         </div>

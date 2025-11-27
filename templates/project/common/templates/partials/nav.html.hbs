@@ -1,7 +1,7 @@
 <nav id="main-nav">
     <a href="/">Home</a>
     {%- if user_id.is_some() %}
-    <span class="nav-user">Logged in</span>
+    <span class="nav-user">{%- if let Some(name) = user_name %}{{ name }}{%- else %}Logged in{%- endif %}</span>
     <button hx-post="/logout" hx-target="#main-content" class="nav-logout">Logout</button>
     {%- else %}
     <a href="/login">Login</a>

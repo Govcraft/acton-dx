@@ -33,6 +33,7 @@ const COMMON_TEMPLATES: &[&str] = &[
     "common/templates/auth/register.html.hbs",
     "common/templates/home.html.hbs",
     "common/static/css/app.css.hbs",
+    "common/static/favicon.ico",
     "common/.gitignore.hbs",
 ];
 
@@ -83,6 +84,7 @@ const COMMON_MAPPINGS: &[TemplateMapping] = &[
     TemplateMapping { source: "common/templates/auth/register.html.hbs", output: "templates/auth/register.html" },
     TemplateMapping { source: "common/templates/home.html.hbs", output: "templates/home.html" },
     TemplateMapping { source: "common/static/css/app.css.hbs", output: "static/css/app.css" },
+    TemplateMapping { source: "common/static/favicon.ico", output: "static/favicon.ico" },
     TemplateMapping { source: "common/.gitignore.hbs", output: ".gitignore" },
 ];
 
@@ -350,6 +352,12 @@ impl ProjectTemplateManager {
         Ok(())
     }
 
+    /// Check if a file is binary based on extension
+    fn is_binary_file(path: &str) -> bool {
+        let binary_extensions = [".ico", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2", ".ttf", ".eot"];
+        binary_extensions.iter().any(|ext| path.ends_with(ext))
+    }
+
     /// Process a single template mapping
     fn process_template(
         &self,
@@ -365,6 +373,13 @@ impl ProjectTemplateManager {
         if let Some(parent) = output_path.parent() {
             fs::create_dir_all(parent)
                 .with_context(|| format!("Failed to create directory: {}", parent.display()))?;
+        }
+
+        // Handle binary files by copying directly
+        if Self::is_binary_file(mapping.source) {
+            fs::copy(&template_path, &output_path)
+                .with_context(|| format!("Failed to copy binary file: {}", template_path.display()))?;
+            return Ok(());
         }
 
         // Read template content

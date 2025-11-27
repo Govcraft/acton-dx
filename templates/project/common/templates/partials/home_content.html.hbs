@@ -2,7 +2,7 @@
     <h1>Welcome to {{project_name}}!</h1>
 
     {%- if user_id.is_some() %}
-    <p class="welcome-message">You're logged in and ready to go!</p>
+    <p class="welcome-message">{%- if let Some(name) = user_name %}Hello, {{ name }}! {%- endif %}You're logged in and ready to go!</p>
     {%- else %}
     <p>Get started by <a href="/login">logging in</a> or <a href="/register">creating an account</a>.</p>
     {%- endif %}

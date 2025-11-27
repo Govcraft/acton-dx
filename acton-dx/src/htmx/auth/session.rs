@@ -61,6 +61,8 @@ pub struct SessionData {
     pub expires_at: DateTime<Utc>,
     /// User ID (if authenticated)
     pub user_id: Option<i64>,
+    /// User's display name (if authenticated)
+    pub user_name: Option<String>,
     /// Custom session data (key-value store)
     pub data: HashMap<String, serde_json::Value>,
     /// Flash messages queued for next request
@@ -77,6 +79,7 @@ impl SessionData {
             last_accessed: now,
             expires_at: now + Duration::hours(24),
             user_id: None,
+            user_name: None,
             data: HashMap::new(),
             flash_messages: Vec::new(),
         }
@@ -91,6 +94,7 @@ impl SessionData {
             last_accessed: now,
             expires_at: now + duration,
             user_id: None,
+            user_name: None,
             data: HashMap::new(),
             flash_messages: Vec::new(),
         }

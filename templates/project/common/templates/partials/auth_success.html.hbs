@@ -3,7 +3,7 @@
 
 <nav id="main-nav" hx-swap-oob="true">
     <a href="/">Home</a>
-    <span class="nav-user">Logged in</span>
+    <span class="nav-user">{%- if let Some(name) = user_name %}{{ name }}{%- else %}Logged in{%- endif %}</span>
     <button hx-post="/logout" hx-target="#main-content" class="nav-logout">Logout</button>
 </nav>
 
