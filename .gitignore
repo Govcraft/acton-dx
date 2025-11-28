@@ -5,6 +5,8 @@
 *.md
 # Exception: README.md is allowed
 !README.md
+# Exception: docs/ directory is allowed
+!docs/**/*.md
 
 # Rust
 /target/
