@@ -14,7 +14,7 @@ pub mod templates;
 
 pub use db::DbCommand;
 pub use deploy::DeployCommand;
-pub use dev::DevCommand;
+pub use dev::{DevCommand, DevOptions};
 pub use generate::GenerateCommand;
 pub use jobs::JobsCommand;
 pub use new::NewCommand;

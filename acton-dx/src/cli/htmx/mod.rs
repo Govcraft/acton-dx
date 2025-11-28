@@ -55,6 +55,26 @@ pub enum HtmxCommand {
         /// Project directory (defaults to current directory)
         #[arg(default_value = ".")]
         path: std::path::PathBuf,
+
+        /// Run with embedded services (single binary, no external services)
+        #[arg(long)]
+        embedded_services: bool,
+
+        /// Base port for embedded services (default: 50051)
+        #[arg(long, default_value = "50051")]
+        services_port: u16,
+
+        /// Application port (default: 3000)
+        #[arg(long, short, default_value = "3000")]
+        port: u16,
+
+        /// Host to bind to (default: 127.0.0.1)
+        #[arg(long, default_value = "127.0.0.1")]
+        host: String,
+
+        /// Enable specific services only (comma-separated: auth,data,cedar,cache,email,file)
+        #[arg(long, value_delimiter = ',')]
+        services: Option<Vec<String>>,
     },
     /// Database management commands
     Db {
@@ -155,8 +175,22 @@ pub fn run(command: HtmxCommand) -> Result<()> {
             let cmd = NewCommand::new(name, database)?;
             cmd.execute()?;
         }
-        HtmxCommand::Dev { path } => {
-            DevCommand::execute(&path)?;
+        HtmxCommand::Dev {
+            path,
+            embedded_services,
+            services_port,
+            port,
+            host,
+            services,
+        } => {
+            let options = commands::DevOptions {
+                embedded_services,
+                services,
+                services_port,
+                app_port: port,
+                host,
+            };
+            DevCommand::execute_with_options(&path, &options)?;
         }
         HtmxCommand::Db { command } => {
             let db_cmd = match command {
