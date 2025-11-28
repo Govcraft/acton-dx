@@ -43,6 +43,8 @@
 //! ```
 
 mod local;
+#[cfg(feature = "microservices")]
+mod microservices;
 pub mod policy;
 pub mod processing;
 pub mod scanning;
@@ -51,6 +53,8 @@ mod types;
 pub mod validation;
 
 pub use local::LocalFileStorage;
+#[cfg(feature = "microservices")]
+pub use microservices::MicroservicesFileStorage;
 pub use policy::{PolicyBuilder, UploadPolicy};
 pub use processing::ImageProcessor;
 pub use scanning::{ClamAvScanner, NoOpScanner, QuarantineScanner, ScanResult, VirusScanner};
