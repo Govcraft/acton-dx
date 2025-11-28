@@ -34,6 +34,9 @@ pub use cedar_template::{AuthzContext, AuthzContextBuilder};
 pub use csrf::{
     CsrfConfig, CsrfLayer, CsrfMiddleware, CSRF_FORM_FIELD, CSRF_HEADER_NAME,
 };
+#[cfg(feature = "microservices")]
+#[allow(unused_imports)]
+pub use csrf::{MicroservicesCsrfLayer, MicroservicesCsrfMiddleware};
 #[allow(unused_imports)]
 pub use file_serving::{
     serve_file, FileAccessControl, FileServingError, FileServingMiddleware,

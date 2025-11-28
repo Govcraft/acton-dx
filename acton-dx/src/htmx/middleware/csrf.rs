@@ -283,6 +283,242 @@ fn csrf_validation_error(message: &str) -> Response<Body> {
     (StatusCode::FORBIDDEN, body).into_response()
 }
 
+// =============================================================================
+// Microservices CSRF Middleware
+// =============================================================================
+//
+// Alternative CSRF middleware implementation that uses the auth-service via gRPC
+// for token validation instead of the local CsrfManagerAgent.
+
+/// Layer for microservices-based CSRF middleware
+///
+/// Uses the auth-service for CSRF token validation instead of the local agent.
+/// Requires the `microservices` feature.
+#[cfg(feature = "microservices")]
+#[derive(Clone)]
+pub struct MicroservicesCsrfLayer {
+    config: CsrfConfig,
+    services: crate::htmx::clients::ServiceRegistry,
+}
+
+#[cfg(feature = "microservices")]
+impl std::fmt::Debug for MicroservicesCsrfLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MicroservicesCsrfLayer")
+            .field("config", &self.config)
+            .field("services", &"ServiceRegistry")
+            .finish()
+    }
+}
+
+#[cfg(feature = "microservices")]
+impl MicroservicesCsrfLayer {
+    /// Create new microservices CSRF layer from application state
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the auth service is not configured in the registry.
+    pub fn new(state: &ActonHtmxState) -> Result<Self, crate::htmx::clients::ClientError> {
+        let services = state
+            .services()
+            .ok_or(crate::htmx::clients::ClientError::NotConfigured(
+                "services registry",
+            ))?
+            .clone();
+
+        // Validate auth service is available
+        let _ = services.auth()?;
+
+        Ok(Self {
+            config: CsrfConfig::default(),
+            services,
+        })
+    }
+
+    /// Create microservices CSRF layer with custom configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the auth service is not configured in the registry.
+    pub fn with_config(
+        state: &ActonHtmxState,
+        config: CsrfConfig,
+    ) -> Result<Self, crate::htmx::clients::ClientError> {
+        let services = state
+            .services()
+            .ok_or(crate::htmx::clients::ClientError::NotConfigured(
+                "services registry",
+            ))?
+            .clone();
+
+        // Validate auth service is available
+        let _ = services.auth()?;
+
+        Ok(Self { config, services })
+    }
+
+    /// Create microservices CSRF layer from service registry
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the auth service is not configured in the registry.
+    pub fn from_registry(
+        services: crate::htmx::clients::ServiceRegistry,
+    ) -> Result<Self, crate::htmx::clients::ClientError> {
+        // Validate auth service is available
+        let _ = services.auth()?;
+
+        Ok(Self {
+            config: CsrfConfig::default(),
+            services,
+        })
+    }
+
+    /// Create microservices CSRF layer from registry with custom configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns error if the auth service is not configured in the registry.
+    pub fn from_registry_with_config(
+        services: crate::htmx::clients::ServiceRegistry,
+        config: CsrfConfig,
+    ) -> Result<Self, crate::htmx::clients::ClientError> {
+        // Validate auth service is available
+        let _ = services.auth()?;
+
+        Ok(Self { config, services })
+    }
+}
+
+#[cfg(feature = "microservices")]
+impl<S> Layer<S> for MicroservicesCsrfLayer {
+    type Service = MicroservicesCsrfMiddleware<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        MicroservicesCsrfMiddleware {
+            inner,
+            config: Arc::new(self.config.clone()),
+            services: self.services.clone(),
+        }
+    }
+}
+
+/// CSRF middleware that validates tokens via the auth-service
+///
+/// Uses gRPC calls to the auth-service for CSRF token validation instead
+/// of local agent communication. Provides graceful fallback on service
+/// unavailability.
+#[cfg(feature = "microservices")]
+#[derive(Clone)]
+pub struct MicroservicesCsrfMiddleware<S> {
+    inner: S,
+    config: Arc<CsrfConfig>,
+    services: crate::htmx::clients::ServiceRegistry,
+}
+
+#[cfg(feature = "microservices")]
+impl<S: std::fmt::Debug> std::fmt::Debug for MicroservicesCsrfMiddleware<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MicroservicesCsrfMiddleware")
+            .field("inner", &self.inner)
+            .field("config", &self.config)
+            .field("services", &"ServiceRegistry")
+            .finish()
+    }
+}
+
+#[cfg(feature = "microservices")]
+impl<S> Service<Request> for MicroservicesCsrfMiddleware<S>
+where
+    S: Service<Request, Response = Response<Body>> + Clone + Send + 'static,
+    S::Future: Send + 'static,
+{
+    type Response = Response<Body>;
+    type Error = S::Error;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: Request) -> Self::Future {
+        let config = self.config.clone();
+        let services = self.services.clone();
+        let mut inner = self.inner.clone();
+        let timeout = Duration::from_millis(config.agent_timeout_ms);
+
+        // Skip CSRF validation for idempotent methods
+        if is_method_safe(req.method()) {
+            return Box::pin(inner.call(req));
+        }
+
+        // Skip CSRF validation for configured paths
+        let path = req.uri().path().to_string();
+        if config.skip_paths.iter().any(|skip| skip == &path) {
+            return Box::pin(inner.call(req));
+        }
+
+        // Get session ID from request extensions (set by SessionMiddleware)
+        let Some(session_id) = req.extensions().get::<SessionId>().cloned() else {
+            tracing::warn!("CSRF middleware requires SessionMiddleware to be applied first");
+            return Box::pin(async move {
+                Ok(csrf_validation_error(
+                    "Session not found - ensure SessionMiddleware is applied",
+                ))
+            });
+        };
+
+        // Extract CSRF token from request header
+        let Some(token) = extract_csrf_token(&req, &config) else {
+            let method = req.method().clone();
+            tracing::warn!("CSRF token missing for {} {}", method, path);
+            return Box::pin(async move { Ok(csrf_validation_error("CSRF token missing")) });
+        };
+
+        Box::pin(async move {
+            // Validate token with auth service
+            let is_valid = match services.auth() {
+                Ok(auth_client) => {
+                    let validation_result = tokio::time::timeout(timeout, async {
+                        let mut client = auth_client.write().await;
+                        client
+                            .validate_csrf_token(session_id.as_str(), token.as_str())
+                            .await
+                    })
+                    .await;
+
+                    match validation_result {
+                        Ok(Ok(valid)) => valid,
+                        Ok(Err(e)) => {
+                            tracing::error!("CSRF validation service error: {}", e);
+                            false
+                        }
+                        Err(_) => {
+                            tracing::error!("CSRF validation timeout");
+                            false
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Auth service unavailable for CSRF validation: {}", e);
+                    // Service unavailable - fail closed for security
+                    false
+                }
+            };
+
+            if !is_valid {
+                tracing::warn!("CSRF token validation failed");
+                return Ok(csrf_validation_error("CSRF token validation failed"));
+            }
+
+            // Token validated - proceed with request
+            inner.call(req).await
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
