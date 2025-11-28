@@ -1,0 +1,23 @@
+# File Service Configuration
+
+[storage]
+# Storage backend type (currently only "local" is supported)
+backend = "local"
+# Base path for file storage
+base_path = "./data/files"
+# Maximum file size in bytes (100MB)
+max_file_size = 104857600
+# Chunk size for streaming in bytes (64KB)
+chunk_size = 65536
+
+[service]
+# Host to bind to
+host = "0.0.0.0"
+# Port to listen on
+port = 50056
+
+[urls]
+# Base URL for public file access
+public_base_url = "http://localhost:50056/files"
+# Secret key for signing URLs (optional)
+# signing_key = "your-secret-key-here"
