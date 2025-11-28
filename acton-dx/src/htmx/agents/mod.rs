@@ -6,6 +6,7 @@
 use acton_reactive::prelude::{AgentConfig, Ern};
 
 pub mod csrf_manager;
+pub mod hot_reload;
 pub mod request_reply;
 pub mod session_manager;
 
@@ -13,6 +14,11 @@ pub mod session_manager;
 pub use csrf_manager::{
     CleanupExpired as CsrfCleanupExpired, CsrfManagerAgent, CsrfToken, DeleteToken,
     GetOrCreateToken, ValidateToken,
+};
+pub use hot_reload::{
+    FileChanged, ForceReload, GetStats as HotReloadGetStats, HotReloadConfig,
+    HotReloadCoordinatorAgent, HotReloadStats, ReloadEvent, ReloadType, Subscribe as HotReloadSubscribe,
+    TriggerPendingReloads, UpdateConfig as HotReloadUpdateConfig,
 };
 pub use request_reply::{create_request_reply, send_response, ResponseChannel};
 pub use session_manager::{
