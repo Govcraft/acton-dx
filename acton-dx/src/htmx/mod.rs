@@ -68,6 +68,10 @@ pub mod template;
 #[cfg(feature = "microservices")]
 pub mod clients;
 
+// Embedded services runtime (available with microservices feature)
+#[cfg(feature = "microservices")]
+pub mod embedded;
+
 // Testing utilities module (available in test builds)
 #[cfg(test)]
 pub mod testing;

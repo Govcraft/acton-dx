@@ -3,11 +3,13 @@
 //! Commands for creating and managing HTMX web applications:
 //! - `new` - Create new project
 //! - `dev` - Start development server
+//! - `serve` - Run application with embedded services
 //! - `db` - Database management
 //! - `scaffold` - Generate CRUD resources
 //! - `generate` - Generate code (jobs, deployment)
 //! - `templates` - Manage framework templates
 //! - `jobs` - Manage background jobs
+//! - `services` - Manage microservices
 //! - `deploy` - Deploy to production
 
 pub mod commands;
@@ -20,7 +22,7 @@ use anyhow::Result;
 use clap::Subcommand;
 use commands::{
     DbCommand, DeployCommand, DevCommand, GenerateCommand, JobsCommand, NewCommand,
-    OAuth2Command, ScaffoldCommand, ServicesCommand, TemplatesCommand,
+    OAuth2Command, ScaffoldCommand, ServeCommand, ServicesCommand, TemplatesCommand,
 };
 
 pub use project_template_manager::ProjectTemplateManager;
@@ -101,6 +103,12 @@ pub enum HtmxCommand {
         /// Services subcommand to execute
         #[command(subcommand)]
         command: ServicesCommand,
+    },
+    /// Serve the application (with optional embedded services)
+    Serve {
+        /// Serve subcommand to execute
+        #[command(subcommand)]
+        command: ServeCommand,
     },
 }
 
@@ -184,6 +192,9 @@ pub fn run(command: HtmxCommand) -> Result<()> {
             command.execute()?;
         }
         HtmxCommand::Services { command } => {
+            command.execute()?;
+        }
+        HtmxCommand::Serve { command } => {
             command.execute()?;
         }
     }
