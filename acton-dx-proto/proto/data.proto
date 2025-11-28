@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package acton.dx.data.v1;
+
+// Data service for database operations
+service DataService {
+  // Query execution
+  rpc Query(QueryRequest) returns (QueryResponse);
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  rpc QueryOne(QueryRequest) returns (QueryOneResponse);
+
+  // Transactions
+  rpc BeginTransaction(BeginTransactionRequest) returns (TransactionResponse);
+  rpc CommitTransaction(CommitTransactionRequest) returns (TransactionResponse);
+  rpc RollbackTransaction(RollbackTransactionRequest) returns (TransactionResponse);
+  rpc ExecuteInTransaction(TransactionExecuteRequest) returns (ExecuteResponse);
+
+  // Migrations
+  rpc RunMigrations(RunMigrationsRequest) returns (MigrationResponse);
+  rpc MigrationStatus(MigrationStatusRequest) returns (MigrationStatusResponse);
+
+  // Health
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+// Generic value type for query parameters and results
+message Value {
+  oneof value {
+    bool null_value = 1;
+    bool bool_value = 2;
+    int64 int_value = 3;
+    double float_value = 4;
+    string string_value = 5;
+    bytes bytes_value = 6;
+  }
+}
+
+// Row of query results
+message Row {
+  map<string, Value> columns = 1;
+}
+
+// Query messages
+message QueryRequest {
+  string sql = 1;
+  repeated Value params = 2;
+  optional string transaction_id = 3;
+}
+
+message QueryResponse {
+  repeated Row rows = 1;
+  int64 rows_returned = 2;
+}
+
+message QueryOneResponse {
+  optional Row row = 1;
+}
+
+// Execute messages
+message ExecuteRequest {
+  string sql = 1;
+  repeated Value params = 2;
+  optional string transaction_id = 3;
+}
+
+message ExecuteResponse {
+  int64 rows_affected = 1;
+  optional int64 last_insert_id = 2;
+}
+
+// Transaction messages
+message BeginTransactionRequest {}
+
+message CommitTransactionRequest {
+  string transaction_id = 1;
+}
+
+message RollbackTransactionRequest {
+  string transaction_id = 1;
+}
+
+message TransactionResponse {
+  string transaction_id = 1;
+  bool success = 2;
+}
+
+message TransactionExecuteRequest {
+  string transaction_id = 1;
+  string sql = 2;
+  repeated Value params = 3;
+}
+
+// Migration messages
+message RunMigrationsRequest {
+  string migrations_path = 1;
+}
+
+message MigrationResponse {
+  bool success = 1;
+  int32 migrations_run = 2;
+  string message = 3;
+}
+
+message MigrationStatusRequest {}
+
+message MigrationStatusResponse {
+  repeated MigrationInfo migrations = 1;
+}
+
+message MigrationInfo {
+  int64 version = 1;
+  string description = 2;
+  bool applied = 3;
+  optional int64 applied_at = 4;
+}
+
+// Health messages
+message PingRequest {}
+
+message PingResponse {
+  bool healthy = 1;
+  int64 latency_ms = 2;
+}

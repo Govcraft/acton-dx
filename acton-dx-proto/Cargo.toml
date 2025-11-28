@@ -1,0 +1,35 @@
+[package]
+name = "acton-dx-proto"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83.0"
+description = "Protocol buffer definitions for Acton DX microservices"
+license = "MIT"
+
+# Proto crates contain auto-generated code from tonic-build.
+# We use relaxed lints since we cannot modify the generated code.
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+# Generated protobuf code cannot be modified to fix these lints
+similar_names = "allow"
+default_trait_access = "allow"
+too_many_lines = "allow"
+missing_errors_doc = "allow"
+missing_const_for_fn = "allow"
+doc_markdown = "allow"
+derive_partial_eq_without_eq = "allow"
+struct_field_names = "allow"
+redundant_field_names = "allow"
+wildcard_imports = "allow"
+must_use_candidate = "allow"
+return_self_not_must_use = "allow"
+
+[dependencies]
+prost = "0.13"
+prost-types = "0.13"
+tonic = "0.13"
+
+[build-dependencies]
+tonic-build = "0.13"

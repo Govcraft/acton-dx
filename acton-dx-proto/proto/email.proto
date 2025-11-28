@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package acton.dx.email.v1;
+
+// Email service for sending emails
+service EmailService {
+  rpc SendEmail(SendEmailRequest) returns (SendEmailResponse);
+  rpc SendBatch(SendBatchRequest) returns (SendBatchResponse);
+  rpc ValidateAddress(ValidateAddressRequest) returns (ValidateAddressResponse);
+}
+
+// Email address with optional name
+message EmailAddress {
+  string email = 1;
+  optional string name = 2;
+}
+
+// Email attachment
+message Attachment {
+  string filename = 1;
+  bytes content = 2;
+  string content_type = 3;
+}
+
+// Email message
+message Email {
+  EmailAddress from = 1;
+  repeated EmailAddress to = 2;
+  repeated EmailAddress cc = 3;
+  repeated EmailAddress bcc = 4;
+  optional EmailAddress reply_to = 5;
+  string subject = 6;
+  optional string text_body = 7;
+  optional string html_body = 8;
+  repeated Attachment attachments = 9;
+  map<string, string> headers = 10;
+}
+
+// Send email request
+message SendEmailRequest {
+  Email email = 1;
+}
+
+// Send email response
+message SendEmailResponse {
+  bool success = 1;
+  optional string message_id = 2;
+  optional string error = 3;
+}
+
+// Batch send request
+message SendBatchRequest {
+  repeated Email emails = 1;
+}
+
+// Batch send response
+message SendBatchResponse {
+  int32 total = 1;
+  int32 succeeded = 2;
+  int32 failed = 3;
+  repeated SendEmailResponse results = 4;
+}
+
+// Address validation request
+message ValidateAddressRequest {
+  string email = 1;
+}
+
+// Address validation response
+message ValidateAddressResponse {
+  bool valid = 1;
+  optional string reason = 2;
+}

@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package acton.dx.cedar.v1;
+
+// Cedar authorization service
+service CedarService {
+  rpc IsAuthorized(AuthzRequest) returns (AuthzResponse);
+  rpc BatchAuthorize(BatchAuthzRequest) returns (BatchAuthzResponse);
+  rpc ReloadPolicies(ReloadPoliciesRequest) returns (ReloadPoliciesResponse);
+  rpc ValidatePolicy(ValidatePolicyRequest) returns (ValidatePolicyResponse);
+}
+
+// Entity reference
+message Entity {
+  string entity_type = 1;
+  string entity_id = 2;
+}
+
+// Authorization request
+message AuthzRequest {
+  Entity principal = 1;
+  string action = 2;
+  Entity resource = 3;
+  map<string, string> context = 4;
+}
+
+// Authorization response
+message AuthzResponse {
+  bool allowed = 1;
+  string decision_reason = 2;
+  repeated string diagnostics = 3;
+}
+
+// Batch authorization
+message BatchAuthzRequest {
+  repeated AuthzRequest requests = 1;
+}
+
+message BatchAuthzResponse {
+  repeated AuthzResponse responses = 1;
+}
+
+// Policy reload
+message ReloadPoliciesRequest {}
+
+message ReloadPoliciesResponse {
+  bool success = 1;
+  int32 policies_loaded = 2;
+  string message = 3;
+}
+
+// Policy validation
+message ValidatePolicyRequest {
+  string policy_text = 1;
+}
+
+message ValidatePolicyResponse {
+  bool valid = 1;
+  repeated string errors = 2;
+}

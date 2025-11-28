@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package acton.dx.file.v1;
+
+// File storage service
+service FileService {
+  // File operations
+  rpc Upload(stream UploadRequest) returns (UploadResponse);
+  rpc Download(DownloadRequest) returns (stream DownloadResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc GetMetadata(GetMetadataRequest) returns (FileMetadata);
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+
+  // URL generation
+  rpc GetPublicUrl(GetUrlRequest) returns (GetUrlResponse);
+  rpc GetSignedUrl(GetSignedUrlRequest) returns (GetUrlResponse);
+}
+
+// File metadata
+message FileMetadata {
+  string id = 1;
+  string filename = 2;
+  string content_type = 3;
+  int64 size = 4;
+  string checksum = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+  map<string, string> metadata = 8;
+}
+
+// Upload request (streamed)
+message UploadRequest {
+  oneof data {
+    UploadMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+// Upload metadata (first message in stream)
+message UploadMetadata {
+  string filename = 1;
+  string content_type = 2;
+  optional string path = 3;
+  map<string, string> metadata = 4;
+}
+
+// Upload response
+message UploadResponse {
+  bool success = 1;
+  optional FileMetadata file = 2;
+  optional string error = 3;
+}
+
+// Download request
+message DownloadRequest {
+  string file_id = 1;
+  optional int64 range_start = 2;
+  optional int64 range_end = 3;
+}
+
+// Download response (streamed)
+message DownloadResponse {
+  oneof data {
+    FileMetadata metadata = 1;
+    bytes chunk = 2;
+  }
+}
+
+// Delete request
+message DeleteRequest {
+  string file_id = 1;
+}
+
+// Delete response
+message DeleteResponse {
+  bool success = 1;
+}
+
+// Get metadata request
+message GetMetadataRequest {
+  string file_id = 1;
+}
+
+// List files request
+message ListFilesRequest {
+  optional string path_prefix = 1;
+  optional int32 limit = 2;
+  optional string cursor = 3;
+}
+
+// List files response
+message ListFilesResponse {
+  repeated FileMetadata files = 1;
+  optional string next_cursor = 2;
+}
+
+// Get URL request
+message GetUrlRequest {
+  string file_id = 1;
+}
+
+// Get signed URL request
+message GetSignedUrlRequest {
+  string file_id = 1;
+  int64 expires_in_seconds = 2;
+}
+
+// Get URL response
+message GetUrlResponse {
+  string url = 1;
+  optional int64 expires_at = 2;
+}

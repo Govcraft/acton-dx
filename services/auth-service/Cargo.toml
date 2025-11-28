@@ -1,0 +1,19 @@
+[package]
+name = "auth-service"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.83.0"
+description = "Authentication service for Acton DX - sessions, passwords, CSRF"
+license = "MIT"
+
+[lints]
+workspace = true
+
+[dependencies]
+acton-dx-proto = { path = "../../acton-dx-proto" }
+tokio = { workspace = true }
+tonic = "0.13"
+prost = "0.13"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }

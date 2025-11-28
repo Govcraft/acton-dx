@@ -1,6 +1,13 @@
 [workspace]
 members = [
     "acton-dx",
+    "acton-dx-proto",
+    "services/auth-service",
+    "services/data-service",
+    "services/cedar-service",
+    "services/cache-service",
+    "services/email-service",
+    "services/file-service",
 ]
 resolver = "2"
 
@@ -88,6 +95,12 @@ parking_lot = "0.12"
 
 # Testing
 proptest = "1"
+
+# gRPC / Protocol Buffers
+prost = "0.13"
+prost-types = "0.13"
+tonic = "0.13"
+tonic-build = "0.13"
 
 # CLI
 clap = { version = "4", features = ["derive", "cargo"] }
