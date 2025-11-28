@@ -1,0 +1,15 @@
+# Cedar Service Default Configuration
+
+[policies]
+# Path to Cedar policy files
+path = "policies"
+
+# Whether to watch for policy changes and reload automatically
+watch = false
+
+[service]
+# Host to bind the gRPC server to
+host = "0.0.0.0"
+
+# Port to listen on
+port = 50053

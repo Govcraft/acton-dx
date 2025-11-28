@@ -17,3 +17,14 @@ prost = "0.13"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = { workspace = true }
+cedar-policy = "4"
+figment = { version = "0.10", features = ["toml", "env"] }
+parking_lot = "0.12"
+
+[dev-dependencies]
+
+[[bin]]
+name = "cedar-service"
+path = "src/main.rs"
