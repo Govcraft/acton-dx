@@ -1,0 +1,23 @@
+# Email Service Configuration
+
+[smtp]
+# SMTP server host (required)
+host = "localhost"
+# SMTP port (default: 587)
+port = 587
+# Use TLS/STARTTLS (default: true)
+tls = true
+# SMTP username (optional, for authentication)
+# username = "user@example.com"
+# SMTP password (optional, for authentication)
+# password = "secret"
+# Default from address (optional)
+# from_address = "noreply@example.com"
+# Default from name (optional)
+# from_name = "My App"
+
+[service]
+# Host to bind to
+host = "0.0.0.0"
+# Port to listen on
+port = 50055

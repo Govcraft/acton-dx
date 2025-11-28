@@ -17,3 +17,14 @@ prost = "0.13"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = { workspace = true }
+figment = { version = "0.10", features = ["toml", "env"] }
+lettre = { version = "0.11", features = ["tokio1-native-tls", "builder"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+
+[[bin]]
+name = "email-service"
+path = "src/main.rs"
