@@ -98,6 +98,9 @@ Inflector = { version = "0.11.4", features = ["heavyweight"], optional = true }
 ureq = { version = "3.1.4", optional = true }
 convert_case = { version = "0.9.0", optional = true }
 similar = { version = "2", optional = true }
+acton-dx-proto = { version = "0.1.0", path = "../acton-dx-proto", optional = true }
+tonic = { workspace = true, optional = true }
+tokio-stream = { version = "0.1.17", optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
@@ -187,3 +190,4 @@ cedar = ["htmx", "dep:cedar-policy"]
 otel-metrics = ["htmx", "dep:opentelemetry", "dep:opentelemetry-otlp"]
 aws-ses = ["htmx", "dep:aws-sdk-sesv2", "dep:aws-config"]
 clamav = ["htmx", "dep:clamav-client"]
+microservices = ["htmx", "dep:acton-dx-proto", "dep:tonic", "dep:tokio-stream"]

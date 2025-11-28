@@ -64,6 +64,10 @@ pub mod state;
 pub mod storage;
 pub mod template;
 
+// Microservices clients (available with microservices feature)
+#[cfg(feature = "microservices")]
+pub mod clients;
+
 // Testing utilities module (available in test builds)
 #[cfg(test)]
 pub mod testing;
