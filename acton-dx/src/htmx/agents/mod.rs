@@ -8,6 +8,7 @@ use acton_reactive::prelude::{AgentConfig, Ern};
 pub mod csrf_manager;
 pub mod hot_reload;
 pub mod request_reply;
+pub mod service_coordinator;
 pub mod session_manager;
 
 // Re-export public types for use by middleware and extractors
@@ -21,6 +22,12 @@ pub use hot_reload::{
     TriggerPendingReloads, UpdateConfig as HotReloadUpdateConfig,
 };
 pub use request_reply::{create_request_reply, send_response, ResponseChannel};
+pub use service_coordinator::{
+    CircuitBreaker, CircuitState, GetServiceStatus, HealthCheckResult, ServiceAvailable,
+    ServiceCoordinatorAgent, ServiceCoordinatorConfig, ServiceHealth, ServiceId, ServiceState,
+    ServiceStatusEvent, ServiceStatusResponse, ServiceUnavailable,
+    Subscribe as ServiceCoordinatorSubscribe, UpdateConfig as ServiceCoordinatorUpdateConfig,
+};
 pub use session_manager::{
     // Unified messages (support both web handler and agent-to-agent patterns)
     AddFlash, CleanupExpired, DeleteSession, LoadSession, SaveSession, SessionManagerAgent,
