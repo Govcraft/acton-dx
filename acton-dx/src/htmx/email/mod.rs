@@ -68,6 +68,8 @@ pub use backend::{
     console::ConsoleBackend,
     smtp::SmtpBackend,
 };
+#[cfg(feature = "microservices")]
+pub use backend::microservices::MicroservicesEmailBackend;
 pub use builder::Email;
 pub use error::EmailError;
 pub use job::SendEmailJob;

@@ -48,6 +48,10 @@ pub enum EmailError {
     /// Serialization error
     #[error("serialization error: {0}")]
     SerializationError(#[from] serde_json::Error),
+
+    /// Email service error (microservices mode)
+    #[error("email service error: {0}")]
+    ServiceError(String),
 }
 
 impl EmailError {
@@ -67,5 +71,11 @@ impl EmailError {
     #[must_use]
     pub fn config<T: Into<String>>(msg: T) -> Self {
         Self::ConfigError(msg.into())
+    }
+
+    /// Create an email service error from a string message (microservices mode)
+    #[must_use]
+    pub fn service<T: Into<String>>(msg: T) -> Self {
+        Self::ServiceError(msg.into())
     }
 }
