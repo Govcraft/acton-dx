@@ -1,0 +1,23 @@
+# Data Service Default Configuration
+
+[database]
+# Database connection URL
+# SQLite: "sqlite:data.db" or "sqlite::memory:"
+# PostgreSQL: "postgres://user:pass@localhost/dbname"
+url = "sqlite::memory:"
+
+# Maximum number of connections in the pool
+max_connections = 10
+
+# Minimum number of connections in the pool
+min_connections = 1
+
+# Connection acquire timeout in seconds
+connect_timeout_seconds = 30
+
+[service]
+# Host to bind the gRPC server to
+host = "0.0.0.0"
+
+# Port to listen on
+port = 50052
