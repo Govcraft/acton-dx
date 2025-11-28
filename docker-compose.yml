@@ -1,0 +1,230 @@
+# Acton-HTMX Microservices Stack
+#
+# Usage:
+#   docker compose up -d              # Start all services
+#   docker compose up auth data       # Start specific services
+#   docker compose logs -f auth       # View logs
+#   docker compose down               # Stop all services
+#
+# Build individual services:
+#   docker compose build auth
+#   docker compose build --no-cache auth
+
+services:
+  # ==========================================================================
+  # Infrastructure
+  # ==========================================================================
+
+  db:
+    image: postgres:16-alpine
+    container_name: acton-db
+    environment:
+      POSTGRES_USER: acton
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-acton_dev}
+      POSTGRES_DB: acton
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acton"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - acton-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: acton-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - acton-network
+
+  # ==========================================================================
+  # Microservices
+  # ==========================================================================
+
+  auth:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: auth-service
+    container_name: acton-auth
+    ports:
+      - "50051:50051"
+    environment:
+      SERVICE_PORT: 50051
+      RUST_LOG: info
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acton-network
+
+  data:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: data-service
+    container_name: acton-data
+    ports:
+      - "50052:50052"
+    environment:
+      SERVICE_PORT: 50052
+      DATABASE_URL: postgresql://acton:${POSTGRES_PASSWORD:-acton_dev}@db:5432/acton
+      RUST_LOG: info
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acton-network
+
+  cedar:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: cedar-service
+    container_name: acton-cedar
+    ports:
+      - "50053:50053"
+    environment:
+      SERVICE_PORT: 50053
+      RUST_LOG: info
+    volumes:
+      - ./policies:/etc/acton/policies:ro
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acton-network
+
+  cache:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: cache-service
+    container_name: acton-cache
+    ports:
+      - "50054:50054"
+    environment:
+      SERVICE_PORT: 50054
+      REDIS_URL: redis://redis:6379
+      RUST_LOG: info
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acton-network
+
+  email:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: email-service
+    container_name: acton-email
+    ports:
+      - "50055:50055"
+    environment:
+      SERVICE_PORT: 50055
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      RUST_LOG: info
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acton-network
+
+  file:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args:
+        SERVICE: file-service
+    container_name: acton-file
+    ports:
+      - "50056:50056"
+    environment:
+      SERVICE_PORT: 50056
+      STORAGE_PATH: /data/uploads
+      RUST_LOG: info
+    volumes:
+      - file_uploads:/data/uploads
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/healthy"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - acton-network
+
+  # ==========================================================================
+  # Development Tools (optional)
+  # ==========================================================================
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: acton-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    profiles:
+      - dev
+    networks:
+      - acton-network
+
+  # Observability stack
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: acton-jaeger
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "16686:16686" # Web UI
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+    profiles:
+      - observability
+    networks:
+      - acton-network
+
+networks:
+  acton-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  file_uploads:

@@ -1,0 +1,109 @@
+# Multi-stage Dockerfile for acton-htmx microservices
+# Usage: docker build --build-arg SERVICE=auth-service -f docker/Dockerfile.service .
+
+ARG RUST_VERSION=1.83
+
+# =============================================================================
+# Stage 1: Build dependencies (cached)
+# =============================================================================
+FROM rust:${RUST_VERSION}-slim-bookworm AS deps
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy only dependency files first (for caching)
+COPY Cargo.toml Cargo.lock ./
+COPY acton-dx/Cargo.toml ./acton-dx/
+COPY acton-dx-proto/Cargo.toml ./acton-dx-proto/
+COPY services/auth-service/Cargo.toml ./services/auth-service/
+COPY services/data-service/Cargo.toml ./services/data-service/
+COPY services/cedar-service/Cargo.toml ./services/cedar-service/
+COPY services/cache-service/Cargo.toml ./services/cache-service/
+COPY services/email-service/Cargo.toml ./services/email-service/
+COPY services/file-service/Cargo.toml ./services/file-service/
+
+# Create dummy main.rs files to build dependencies
+RUN mkdir -p acton-dx/src acton-dx-proto/src acton-dx-proto/proto \
+    && echo "fn main() {}" > acton-dx/src/main.rs \
+    && echo "pub fn lib() {}" > acton-dx/src/lib.rs \
+    && echo "" > acton-dx-proto/src/lib.rs \
+    && for service in auth data cedar cache email file; do \
+         mkdir -p services/${service}-service/src && \
+         echo "fn main() {}" > services/${service}-service/src/main.rs && \
+         echo "pub fn lib() {}" > services/${service}-service/src/lib.rs; \
+       done
+
+# Create empty proto files
+RUN touch acton-dx-proto/proto/auth.proto \
+    acton-dx-proto/proto/data.proto \
+    acton-dx-proto/proto/cedar.proto \
+    acton-dx-proto/proto/cache.proto \
+    acton-dx-proto/proto/email.proto \
+    acton-dx-proto/proto/file.proto
+
+# Build dependencies only
+RUN cargo build --release 2>/dev/null || true
+
+# =============================================================================
+# Stage 2: Build the actual service
+# =============================================================================
+FROM deps AS builder
+
+ARG SERVICE
+
+# Copy actual source code
+COPY acton-dx/src ./acton-dx/src
+COPY acton-dx-proto ./acton-dx-proto
+COPY services ./services
+
+# Remove dummy files
+RUN find . -name "main.rs" -path "*/src/*" -delete 2>/dev/null || true
+RUN find . -name "lib.rs" -path "*/src/*" -delete 2>/dev/null || true
+
+# Re-copy source
+COPY acton-dx/src ./acton-dx/src
+COPY services/${SERVICE}/src ./services/${SERVICE}/src
+
+# Build the specific service
+RUN cargo build --release -p ${SERVICE}
+
+# =============================================================================
+# Stage 3: Runtime image
+# =============================================================================
+FROM debian:bookworm-slim AS runtime
+
+ARG SERVICE
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd --create-home --user-group acton
+
+# Copy binary
+COPY --from=builder /app/target/release/${SERVICE} /usr/local/bin/service
+
+# Create config directory
+RUN mkdir -p /etc/acton && chown acton:acton /etc/acton
+
+USER acton
+WORKDIR /home/acton
+
+# Default port (can be overridden)
+EXPOSE 50051
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD test -f /tmp/healthy || exit 1
+
+# Run service
+CMD ["/usr/local/bin/service"]

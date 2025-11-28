@@ -1,0 +1,41 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+target/
+**/*.rs.bk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Documentation
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Environment
+.env*
+!.env.example
+
+# Local config
+*.local.*
+.claude/
+
+# Test artifacts
+**/*.db
+**/*.db-shm
+**/*.db-wal
+
+# Logs
+*.log
+
+# Temporary
+tmp/
+temp/
