@@ -8,6 +8,7 @@ pub mod jobs;
 pub mod new;
 pub mod oauth2;
 pub mod scaffold;
+pub mod services;
 pub mod templates;
 
 pub use db::DbCommand;
@@ -18,4 +19,5 @@ pub use jobs::JobsCommand;
 pub use new::NewCommand;
 pub use oauth2::OAuth2Command;
 pub use scaffold::ScaffoldCommand;
+pub use services::{ServiceName, ServicesCommand};
 pub use templates::TemplatesCommand;

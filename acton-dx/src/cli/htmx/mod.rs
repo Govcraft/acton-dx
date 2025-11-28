@@ -20,7 +20,7 @@ use anyhow::Result;
 use clap::Subcommand;
 use commands::{
     DbCommand, DeployCommand, DevCommand, GenerateCommand, JobsCommand, NewCommand,
-    OAuth2Command, ScaffoldCommand, TemplatesCommand,
+    OAuth2Command, ScaffoldCommand, ServicesCommand, TemplatesCommand,
 };
 
 pub use project_template_manager::ProjectTemplateManager;
@@ -95,6 +95,12 @@ pub enum HtmxCommand {
         /// Templates subcommand to execute
         #[command(subcommand)]
         command: TemplatesCommand,
+    },
+    /// Manage microservices
+    Services {
+        /// Services subcommand to execute
+        #[command(subcommand)]
+        command: ServicesCommand,
     },
 }
 
@@ -175,6 +181,9 @@ pub fn run(command: HtmxCommand) -> Result<()> {
             health_check(&url)?;
         }
         HtmxCommand::Templates { command } => {
+            command.execute()?;
+        }
+        HtmxCommand::Services { command } => {
             command.execute()?;
         }
     }
