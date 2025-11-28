@@ -64,7 +64,7 @@ askama = "0.14"
 validator = { version = "0.20", features = ["derive"] }
 
 # Security & crypto
-argon2 = "0.5"
+argon2 = { version = "0.5", features = ["std", "rand"] }
 rand = "0.9"
 sha2 = "0.10"
 uuid = { version = "1", features = ["v4", "serde"] }

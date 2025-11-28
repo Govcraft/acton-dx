@@ -1,0 +1,31 @@
+# Auth Service Configuration
+
+[service]
+# Port to listen on
+port = 9001
+# Host to bind to
+host = "0.0.0.0"
+
+[session]
+# Default session TTL in seconds (1 hour)
+default_ttl_seconds = 3600
+# Maximum session TTL in seconds (24 hours)
+max_ttl_seconds = 86400
+# Interval for expired session cleanup (5 minutes)
+cleanup_interval_seconds = 300
+
+[csrf]
+# Token TTL in seconds (1 hour)
+token_ttl_seconds = 3600
+# Token length in bytes (will be base64 encoded)
+token_bytes = 32
+
+[password]
+# Argon2 memory cost in KiB
+memory_cost = 19456
+# Argon2 time cost (iterations)
+time_cost = 2
+# Argon2 parallelism factor
+parallelism = 1
+# Output hash length in bytes
+hash_length = 32

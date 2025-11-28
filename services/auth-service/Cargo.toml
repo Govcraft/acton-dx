@@ -9,11 +9,30 @@ license = "MIT"
 [lints]
 workspace = true
 
+[[bin]]
+name = "auth-service"
+path = "src/main.rs"
+
 [dependencies]
 acton-dx-proto = { path = "../../acton-dx-proto" }
+acton-reactive = { workspace = true }
 tokio = { workspace = true }
 tonic = "0.13"
 prost = "0.13"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+argon2 = { workspace = true, features = ["std"] }
+rand = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+dashmap = "6"
+base64 = "0.22"
+subtle = "2.6"
+figment = { workspace = true }
+thiserror = { workspace = true }
+anyhow.workspace = true
+
+[dev-dependencies]
+proptest = { workspace = true }
