@@ -47,5 +47,8 @@ pub use security_headers::{
 };
 #[allow(unused_imports)]
 pub use session::{SameSite, SessionConfig, SessionLayer, SessionMiddleware, SESSION_COOKIE_NAME};
+#[cfg(feature = "microservices")]
+#[allow(unused_imports)]
+pub use session::{MicroservicesSessionLayer, MicroservicesSessionMiddleware};
 #[allow(unused_imports)]
 pub use helpers::is_htmx_request;

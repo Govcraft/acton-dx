@@ -281,6 +281,327 @@ fn set_session_cookie(
     }
 }
 
+// =============================================================================
+// Microservices Session Middleware
+// =============================================================================
+
+/// Layer for microservices-based session middleware
+///
+/// Uses the auth-service via gRPC for session management instead of
+/// the local `SessionManagerAgent`.
+#[cfg(feature = "microservices")]
+#[derive(Clone)]
+pub struct MicroservicesSessionLayer {
+    config: SessionConfig,
+    services: crate::htmx::clients::ServiceRegistry,
+}
+
+#[cfg(feature = "microservices")]
+impl std::fmt::Debug for MicroservicesSessionLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MicroservicesSessionLayer")
+            .field("config", &self.config)
+            .field("services", &"ServiceRegistry")
+            .finish()
+    }
+}
+
+#[cfg(feature = "microservices")]
+impl MicroservicesSessionLayer {
+    /// Create a new microservices session layer
+    ///
+    /// # Errors
+    ///
+    /// Returns error if auth service is not configured in the registry.
+    pub fn new(
+        state: &ActonHtmxState,
+    ) -> Result<Self, crate::htmx::clients::ClientError> {
+        let services = state
+            .services()
+            .ok_or(crate::htmx::clients::ClientError::NotConfigured(
+                "services registry",
+            ))?
+            .clone();
+
+        // Verify auth service is available
+        let _ = services.auth()?;
+
+        Ok(Self {
+            config: SessionConfig::default(),
+            services,
+        })
+    }
+
+    /// Create with custom configuration
+    ///
+    /// # Errors
+    ///
+    /// Returns error if auth service is not configured in the registry.
+    pub fn with_config(
+        state: &ActonHtmxState,
+        config: SessionConfig,
+    ) -> Result<Self, crate::htmx::clients::ClientError> {
+        let services = state
+            .services()
+            .ok_or(crate::htmx::clients::ClientError::NotConfigured(
+                "services registry",
+            ))?
+            .clone();
+
+        // Verify auth service is available
+        let _ = services.auth()?;
+
+        Ok(Self { config, services })
+    }
+
+    /// Create from a service registry directly
+    ///
+    /// # Errors
+    ///
+    /// Returns error if auth service is not configured in the registry.
+    pub fn from_registry(
+        services: crate::htmx::clients::ServiceRegistry,
+    ) -> Result<Self, crate::htmx::clients::ClientError> {
+        // Verify auth service is available
+        let _ = services.auth()?;
+
+        Ok(Self {
+            config: SessionConfig::default(),
+            services,
+        })
+    }
+}
+
+#[cfg(feature = "microservices")]
+impl<S> Layer<S> for MicroservicesSessionLayer {
+    type Service = MicroservicesSessionMiddleware<S>;
+
+    fn layer(&self, inner: S) -> Self::Service {
+        MicroservicesSessionMiddleware {
+            inner,
+            config: Arc::new(self.config.clone()),
+            services: self.services.clone(),
+        }
+    }
+}
+
+/// Microservices-based session middleware
+///
+/// Uses the auth-service via gRPC for session operations.
+#[cfg(feature = "microservices")]
+#[derive(Clone)]
+pub struct MicroservicesSessionMiddleware<S> {
+    inner: S,
+    config: Arc<SessionConfig>,
+    services: crate::htmx::clients::ServiceRegistry,
+}
+
+#[cfg(feature = "microservices")]
+impl<S: std::fmt::Debug> std::fmt::Debug for MicroservicesSessionMiddleware<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MicroservicesSessionMiddleware")
+            .field("inner", &self.inner)
+            .field("config", &self.config)
+            .field("services", &"ServiceRegistry")
+            .finish()
+    }
+}
+
+#[cfg(feature = "microservices")]
+impl<S> Service<Request> for MicroservicesSessionMiddleware<S>
+where
+    S: Service<Request, Response = Response<Body>> + Clone + Send + 'static,
+    S::Future: Send + 'static,
+{
+    type Response = Response<Body>;
+    type Error = S::Error;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx)
+    }
+
+    fn call(&mut self, mut req: Request) -> Self::Future {
+        let config = self.config.clone();
+        let services = self.services.clone();
+        let mut inner = self.inner.clone();
+        let timeout_duration = Duration::from_millis(config.agent_timeout_ms);
+
+        Box::pin(async move {
+            // Extract session ID from cookie
+            let existing_session_id = extract_session_id(&req, &config.cookie_name);
+
+            // Load or create session via auth-service
+            let (session_id, session_data, is_new) = load_or_create_session_via_service(
+                &services,
+                existing_session_id,
+                timeout_duration,
+                i64::try_from(config.max_age_secs).unwrap_or(86400),
+            )
+            .await
+            .unwrap_or_else(|_| {
+                // Service unavailable - create local session as fallback
+                let id = SessionId::generate();
+                (id, SessionData::new(), true)
+            });
+
+            // Insert session into request extensions for handlers to access
+            req.extensions_mut().insert(session_id.clone());
+            req.extensions_mut().insert(session_data.clone());
+
+            // Call inner service
+            let mut response = inner.call(req).await?;
+
+            // Get potentially modified session data from response extensions
+            let final_session_data = response
+                .extensions()
+                .get::<SessionData>()
+                .cloned()
+                .unwrap_or(session_data);
+
+            // Save session to auth-service (fire-and-forget for performance)
+            let _ = save_session_via_service(
+                &services,
+                &session_id,
+                &final_session_data,
+                timeout_duration,
+            )
+            .await;
+
+            // Set session cookie if new
+            if is_new {
+                set_session_cookie(&mut response, &session_id, &config);
+            }
+
+            Ok(response)
+        })
+    }
+}
+
+/// Load or create a session via the auth-service
+#[cfg(feature = "microservices")]
+async fn load_or_create_session_via_service(
+    services: &crate::htmx::clients::ServiceRegistry,
+    existing_session_id: Option<SessionId>,
+    timeout: Duration,
+    ttl_seconds: i64,
+) -> Result<(SessionId, SessionData, bool), crate::htmx::clients::ClientError> {
+    let auth = services.auth()?;
+
+    if let Some(id) = existing_session_id {
+        // Try to validate existing session
+        let validate_result = tokio::time::timeout(timeout, async {
+            let mut client = auth.write().await;
+            client.validate_session(id.as_str()).await
+        })
+        .await;
+
+        if let Ok(Ok(Some(proto_session))) = validate_result {
+            // Convert proto session to local SessionData
+            let session_data = proto_session_to_session_data(&proto_session);
+            return Ok((id, session_data, false));
+        }
+    }
+
+    // Create new session via auth-service
+    let create_result = tokio::time::timeout(timeout, async {
+        let mut client = auth.write().await;
+        client
+            .create_session(None, ttl_seconds, std::collections::HashMap::new())
+            .await
+    })
+    .await;
+
+    match create_result {
+        Ok(Ok(proto_session)) => {
+            let session_id = SessionId::from_str(&proto_session.session_id)
+                .unwrap_or_else(|_| SessionId::generate());
+            let session_data = proto_session_to_session_data(&proto_session);
+            Ok((session_id, session_data, true))
+        }
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err(crate::htmx::clients::ClientError::RequestFailed(
+            "timeout".to_string(),
+        )),
+    }
+}
+
+/// Save session via the auth-service
+#[cfg(feature = "microservices")]
+async fn save_session_via_service(
+    services: &crate::htmx::clients::ServiceRegistry,
+    session_id: &SessionId,
+    session_data: &SessionData,
+    timeout: Duration,
+) -> Result<(), crate::htmx::clients::ClientError> {
+    let auth = services.auth()?;
+
+    // Convert SessionData to HashMap for update
+    let data = session_data_to_hashmap(session_data);
+
+    let _ = tokio::time::timeout(timeout, async {
+        let mut client = auth.write().await;
+        client
+            .update_session(session_id.as_str(), data, session_data.user_id)
+            .await
+    })
+    .await;
+
+    Ok(())
+}
+
+/// Convert proto Session to local SessionData
+#[cfg(feature = "microservices")]
+fn proto_session_to_session_data(
+    proto: &crate::htmx::clients::Session,
+) -> SessionData {
+    let mut session_data = SessionData::new();
+
+    // Set user_id directly
+    session_data.user_id = proto.user_id;
+
+    // Set user_name directly if available
+    if let Some(ref name) = proto.user_name {
+        session_data.user_name = Some(name.clone());
+    }
+
+    // Store user_email in custom data if available
+    if let Some(ref email) = proto.user_email {
+        let _ = session_data.set("user_email".to_string(), email.clone());
+    }
+
+    // Copy additional data fields
+    for (key, value) in &proto.data {
+        let _ = session_data.set(key.clone(), value.clone());
+    }
+
+    session_data
+}
+
+/// Convert SessionData to HashMap for proto
+#[cfg(feature = "microservices")]
+fn session_data_to_hashmap(session_data: &SessionData) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+
+    // Add user_name if present
+    if let Some(ref name) = session_data.user_name {
+        map.insert("user_name".to_string(), name.clone());
+    }
+
+    // Add all custom data from session
+    for (key, value) in &session_data.data {
+        if let Some(s) = value.as_str() {
+            map.insert(key.clone(), s.to_string());
+        } else if let Ok(s) = serde_json::to_string(value) {
+            map.insert(key.clone(), s);
+        }
+    }
+
+    map
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

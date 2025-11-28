@@ -20,6 +20,9 @@ use sqlx::SqlitePool;
 #[cfg(feature = "redis")]
 use deadpool_redis::Pool as RedisPool;
 
+#[cfg(feature = "microservices")]
+use crate::htmx::clients::{ServiceRegistry, ServicesConfig};
+
 /// Application state for acton-dx applications
 ///
 /// Combines:
@@ -109,6 +112,13 @@ pub struct ActonHtmxState {
     ///
     /// XDG-compliant template loader with hot reload support
     templates: FrameworkTemplates,
+
+    /// Microservices registry for distributed service clients
+    ///
+    /// When enabled, provides access to auth, data, cedar, cache, email,
+    /// and file services via gRPC clients.
+    #[cfg(feature = "microservices")]
+    services: Option<ServiceRegistry>,
 }
 
 impl ActonHtmxState {
@@ -157,6 +167,8 @@ impl ActonHtmxState {
             #[cfg(feature = "redis")]
             redis_pool: None,
             templates,
+            #[cfg(feature = "microservices")]
+            services: None,
         })
     }
 
@@ -206,6 +218,8 @@ impl ActonHtmxState {
             #[cfg(feature = "redis")]
             redis_pool: None,
             templates,
+            #[cfg(feature = "microservices")]
+            services: None,
         })
     }
 
@@ -466,6 +480,121 @@ impl ActonHtmxState {
     #[cfg(feature = "redis")]
     pub fn set_redis_pool(&mut self, pool: RedisPool) {
         self.redis_pool = Some(pool);
+    }
+
+    // ========================================================================
+    // Microservices Helper Methods
+    // ========================================================================
+
+    /// Get the microservices registry (if configured)
+    ///
+    /// Returns `None` if microservices are not configured.
+    /// Use `set_services` or `set_services_from_config` to configure.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// async fn handler(State(state): State<ActonHtmxState>) {
+    ///     if let Some(services) = state.services() {
+    ///         let auth = services.auth()?;
+    ///         let mut client = auth.write().await;
+    ///         // Use auth client
+    ///     }
+    /// }
+    /// ```
+    #[must_use]
+    #[cfg(feature = "microservices")]
+    pub const fn services(&self) -> Option<&ServiceRegistry> {
+        self.services.as_ref()
+    }
+
+    /// Set the microservices registry
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let config = ServicesConfig {
+    ///     auth_endpoint: Some("http://localhost:50051".to_string()),
+    ///     ..Default::default()
+    /// };
+    /// let registry = ServiceRegistry::from_config(&config).await?;
+    /// state.set_services(registry);
+    /// ```
+    #[cfg(feature = "microservices")]
+    pub fn set_services(&mut self, registry: ServiceRegistry) {
+        self.services = Some(registry);
+    }
+
+    /// Configure microservices from a config struct
+    ///
+    /// Convenience method that creates a `ServiceRegistry` from configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns error if any configured service fails to connect.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let config = ServicesConfig {
+    ///     auth_endpoint: Some("http://localhost:50051".to_string()),
+    ///     data_endpoint: Some("http://localhost:50052".to_string()),
+    ///     ..Default::default()
+    /// };
+    /// state.set_services_from_config(&config).await?;
+    /// ```
+    #[cfg(feature = "microservices")]
+    pub async fn set_services_from_config(
+        &mut self,
+        config: &ServicesConfig,
+    ) -> Result<(), crate::htmx::clients::ClientError> {
+        let registry = ServiceRegistry::from_config(config).await?;
+        self.services = Some(registry);
+        Ok(())
+    }
+
+    /// Check if the auth service is available
+    ///
+    /// Returns true if microservices are configured and auth service is connected.
+    #[must_use]
+    #[cfg(feature = "microservices")]
+    pub fn has_auth_service(&self) -> bool {
+        self.services.as_ref().is_some_and(ServiceRegistry::has_auth)
+    }
+
+    /// Check if the data service is available
+    #[must_use]
+    #[cfg(feature = "microservices")]
+    pub fn has_data_service(&self) -> bool {
+        self.services.as_ref().is_some_and(ServiceRegistry::has_data)
+    }
+
+    /// Check if the cedar service is available
+    #[must_use]
+    #[cfg(feature = "microservices")]
+    pub fn has_cedar_service(&self) -> bool {
+        self.services.as_ref().is_some_and(ServiceRegistry::has_cedar)
+    }
+
+    /// Check if the cache service is available
+    #[must_use]
+    #[cfg(feature = "microservices")]
+    pub fn has_cache_service(&self) -> bool {
+        self.services.as_ref().is_some_and(ServiceRegistry::has_cache)
+    }
+
+    /// Check if the email service is available
+    #[must_use]
+    #[cfg(feature = "microservices")]
+    pub fn has_email_service(&self) -> bool {
+        self.services.as_ref().is_some_and(ServiceRegistry::has_email)
+    }
+
+    /// Check if the file service is available
+    #[must_use]
+    #[cfg(feature = "microservices")]
+    pub fn has_file_service(&self) -> bool {
+        self.services.as_ref().is_some_and(ServiceRegistry::has_file)
     }
 
     // ========================================================================
