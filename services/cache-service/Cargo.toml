@@ -17,3 +17,13 @@ prost = "0.13"
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = { workspace = true }
+figment = { version = "0.10", features = ["toml", "env"] }
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+[dev-dependencies]
+
+[[bin]]
+name = "cache-service"
+path = "src/main.rs"

@@ -1,0 +1,18 @@
+# Cache Service Default Configuration
+
+[redis]
+# Redis connection URL
+url = "redis://127.0.0.1:6379"
+
+# Connection pool size
+pool_size = 10
+
+# Connection timeout in seconds
+connect_timeout_seconds = 5
+
+[service]
+# Host to bind the gRPC server to
+host = "0.0.0.0"
+
+# Port to listen on
+port = 50054
