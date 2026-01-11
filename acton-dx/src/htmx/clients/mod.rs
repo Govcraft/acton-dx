@@ -1,17 +1,43 @@
 //! Service clients for microservices communication.
 //!
-//! This module provides gRPC client wrappers for all Acton DX microservices:
+//! This module provides client wrappers for communicating with Acton DX microservices
+//! using either IPC (Unix Domain Sockets) or gRPC transports.
 //!
-//! - [`AuthClient`] - Authentication, sessions, passwords, CSRF tokens, and users
-//! - [`DataClient`] - Database queries, transactions, and migrations
-//! - [`CedarClient`] - Cedar-based authorization
-//! - [`CacheClient`] - Redis caching and rate limiting
-//! - [`EmailClient`] - Email sending
-//! - [`FileClient`] - File storage and retrieval
+//! ## Transport Types
 //!
-//! # Usage
+//! - **IPC (default)**: Low-latency Unix Domain Socket communication for co-located services
+//! - **gRPC**: HTTP/2-based protocol for distributed deployments
 //!
-//! Each client can be created by connecting to its corresponding service:
+//! ## Available Clients
+//!
+//! - [`AuthClient`] - Authentication, sessions, passwords, CSRF tokens, and users (gRPC)
+//! - [`DataClient`] - Database queries, transactions, and migrations (gRPC)
+//! - [`CedarClient`] - Cedar-based authorization (gRPC)
+//! - [`CacheClient`] - Redis caching and rate limiting (gRPC)
+//! - [`EmailClient`] - Email sending (gRPC)
+//! - [`FileClient`] - File storage and retrieval (gRPC)
+//!
+//! ## IPC Clients
+//!
+//! - [`ipc::IpcAuthClient`] - Auth operations over IPC
+//! - [`ipc::IpcClient`] - Generic IPC client for custom operations
+//!
+//! # Configuration
+//!
+//! ```toml
+//! [services]
+//! transport = "ipc"  # or "grpc" (ipc is the default)
+//!
+//! [services.ipc]
+//! app_name = "my-app"
+//! timeout_ms = 30000
+//!
+//! [services.grpc]
+//! auth_endpoint = "http://localhost:50051"
+//! data_endpoint = "http://localhost:50052"
+//! ```
+//!
+//! # Usage - gRPC (traditional)
 //!
 //! ```rust,no_run
 //! # #[tokio::main]
@@ -25,6 +51,19 @@
 //! println!("Session ID: {}", session.session_id);
 //! # Ok(())
 //! # }
+//! ```
+//!
+//! # Usage - IPC (recommended for sidecars)
+//!
+//! ```rust,ignore
+//! use acton_dx::htmx::clients::ipc::{IpcAuthClient, IpcClientConfig};
+//!
+//! let config = IpcClientConfig::default();
+//! let auth = IpcAuthClient::connect(config).await?;
+//!
+//! // Create a session over IPC
+//! let session = auth.create_session(None, 3600, Default::default()).await?;
+//! println!("Session ID: {}", session.session_id);
 //! ```
 //!
 //! # Service Registry
@@ -58,7 +97,9 @@ mod data;
 mod email;
 mod error;
 mod file;
+pub mod ipc;
 mod registry;
+pub mod transport;
 
 pub use auth::AuthClient;
 pub use cache::{CacheClient, RateLimitResult};
@@ -68,6 +109,9 @@ pub use email::{BatchSendResult, EmailAddr, EmailAttachment, EmailClient, EmailM
 pub use error::ClientError;
 pub use file::{DownloadResult, FileClient, ListResult, SignedUrlResult, StoredFileInfo, UploadResult};
 pub use registry::{ServiceRegistry, ServicesConfig};
+pub use transport::{
+    FallbackConfig, GrpcTransportConfig, IpcTransportConfig, TransportConfig, TransportType,
+};
 
 // Re-export proto types that might be useful for users
 pub use acton_dx_proto::auth::v1::{FlashMessage, Session, User};

@@ -379,6 +379,29 @@ pub struct ActonHtmxConfig {
     #[serde(default)]
     pub oauth2: OAuthConfig,
 
+    /// Services transport configuration
+    ///
+    /// Configures how the application communicates with microservices.
+    /// IPC (Unix Domain Sockets) is the default for co-located services.
+    /// gRPC is available for distributed deployments.
+    ///
+    /// # Example
+    ///
+    /// ```toml
+    /// [services]
+    /// transport_type = "ipc"  # or "grpc"
+    ///
+    /// [services.ipc]
+    /// app_name = "my-app"
+    /// timeout_ms = 30000
+    ///
+    /// [services.grpc]
+    /// auth_endpoint = "http://localhost:50051"
+    /// ```
+    #[cfg(feature = "microservices")]
+    #[serde(default)]
+    pub services: crate::htmx::clients::TransportConfig,
+
     /// Cedar authorization configuration (optional, requires cedar feature)
     #[cfg(feature = "cedar")]
     #[serde(default)]
@@ -387,6 +410,33 @@ pub struct ActonHtmxConfig {
     /// Feature flags
     #[serde(default)]
     pub features: HashMap<String, bool>,
+}
+
+#[cfg(feature = "microservices")]
+impl ActonHtmxConfig {
+    /// Check if IPC transport is configured (default).
+    #[must_use]
+    pub const fn is_ipc_transport(&self) -> bool {
+        matches!(
+            self.services.transport_type,
+            crate::htmx::clients::TransportType::Ipc
+        )
+    }
+
+    /// Check if gRPC transport is configured.
+    #[must_use]
+    pub const fn is_grpc_transport(&self) -> bool {
+        matches!(
+            self.services.transport_type,
+            crate::htmx::clients::TransportType::Grpc
+        )
+    }
+
+    /// Get the transport type.
+    #[must_use]
+    pub const fn transport_type(&self) -> crate::htmx::clients::TransportType {
+        self.services.transport_type
+    }
 }
 
 impl ActonHtmxConfig {
