@@ -17,7 +17,7 @@
 //! - Status event broadcasting
 //! - Graceful degradation
 
-use crate::htmx::agents::default_agent_config;
+use crate::htmx::agents::default_actor_config;
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
 use acton_reactive::prelude::*;
 use std::collections::HashMap;
@@ -25,6 +25,9 @@ use std::future::Future;
 use std::pin::Pin;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, oneshot};
+
+/// Type alias for boxed futures used in message handler returns
+type FutureBox = Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>>;
 
 /// Default health check interval
 const DEFAULT_HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(30);
@@ -356,8 +359,8 @@ impl ServiceCoordinatorConfig {
     }
 }
 
-// Type alias for the agent builder
-type ServiceCoordinatorBuilder = ManagedAgent<Idle, ServiceCoordinatorAgent>;
+// Type alias for the actor builder
+type ServiceCoordinatorActorBuilder = ManagedActor<Idle, ServiceCoordinatorAgent>;
 
 /// Service coordinator agent model
 #[derive(Debug)]
@@ -549,26 +552,26 @@ impl ServiceCoordinatorAgent {
         }
     }
 
-    /// Spawn service coordinator agent
+    /// Spawn service coordinator actor
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
-    pub async fn spawn(runtime: &mut AgentRuntime) -> anyhow::Result<AgentHandle> {
+    /// Returns error if actor initialization fails
+    pub async fn spawn(runtime: &mut ActorRuntime) -> anyhow::Result<ActorHandle> {
         Self::spawn_with_config(runtime, ServiceCoordinatorConfig::default()).await
     }
 
-    /// Spawn service coordinator agent with custom configuration
+    /// Spawn service coordinator actor with custom configuration
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
+    /// Returns error if actor initialization fails
     pub async fn spawn_with_config(
-        runtime: &mut AgentRuntime,
+        runtime: &mut ActorRuntime,
         config: ServiceCoordinatorConfig,
-    ) -> anyhow::Result<AgentHandle> {
-        let agent_config = default_agent_config("service_coordinator")?;
-        let mut builder = runtime.new_agent_with_config::<Self>(agent_config).await;
+    ) -> anyhow::Result<ActorHandle> {
+        let actor_config = default_actor_config("service_coordinator")?;
+        let mut builder = runtime.new_actor_with_config::<Self>(actor_config);
 
         // Update model with custom configuration
         let mut services = HashMap::new();
@@ -587,8 +590,8 @@ impl ServiceCoordinatorAgent {
 
     /// Configure all message handlers
     async fn configure_handlers(
-        mut builder: ServiceCoordinatorBuilder,
-    ) -> anyhow::Result<AgentHandle> {
+        mut builder: ServiceCoordinatorActorBuilder,
+    ) -> anyhow::Result<ActorHandle> {
         Self::configure_health_handlers(&mut builder);
         Self::configure_request_handlers(&mut builder);
         Self::configure_config_handlers(&mut builder);
@@ -596,13 +599,13 @@ impl ServiceCoordinatorAgent {
     }
 
     /// Configure health-related message handlers
-    fn configure_health_handlers(builder: &mut ServiceCoordinatorBuilder) {
+    fn configure_health_handlers(builder: &mut ServiceCoordinatorActorBuilder) {
         builder
-            .mutate_on::<HealthCheckResult>(|agent, envelope| {
-                let result = envelope.message();
-                agent.model.health_check_count += 1;
-                let Some(health) = agent.model.services.get_mut(&result.service_id) else {
-                    return AgentReply::immediate();
+            .mutate_on::<HealthCheckResult>(|actor, context| {
+                let result = context.message();
+                actor.model.health_check_count += 1;
+                let Some(health) = actor.model.services.get_mut(&result.service_id) else {
+                    return Box::pin(async {}) as FutureBox;
                 };
                 let previous = health.state;
                 health.last_check = Some(Instant::now());
@@ -614,71 +617,71 @@ impl ServiceCoordinatorAgent {
                     health.circuit.record_failure();
                     health.state = Self::state_from_circuit(&health.circuit);
                 }
-                Self::maybe_broadcast(&agent.model.status_tx, result.service_id, previous, health.state)
+                Self::maybe_broadcast(&actor.model.status_tx, result.service_id, previous, health.state)
             })
-            .mutate_on::<ServiceAvailable>(|agent, envelope| {
-                let id = envelope.message().service_id;
-                let Some(health) = agent.model.services.get_mut(&id) else {
-                    return AgentReply::immediate();
+            .mutate_on::<ServiceAvailable>(|actor, context| {
+                let id = context.message().service_id;
+                let Some(health) = actor.model.services.get_mut(&id) else {
+                    return Box::pin(async {}) as FutureBox;
                 };
                 let prev = health.state;
                 health.circuit.record_success();
                 health.state = ServiceState::Healthy;
-                Self::maybe_broadcast(&agent.model.status_tx, id, prev, ServiceState::Healthy)
+                Self::maybe_broadcast(&actor.model.status_tx, id, prev, ServiceState::Healthy)
             })
-            .mutate_on::<ServiceUnavailable>(|agent, envelope| {
-                let id = envelope.message().service_id;
-                let Some(health) = agent.model.services.get_mut(&id) else {
-                    return AgentReply::immediate();
+            .mutate_on::<ServiceUnavailable>(|actor, context| {
+                let id = context.message().service_id;
+                let Some(health) = actor.model.services.get_mut(&id) else {
+                    return Box::pin(async {}) as FutureBox;
                 };
                 let prev = health.state;
                 health.circuit.record_failure();
                 let new_state = Self::state_from_circuit(&health.circuit);
                 health.state = new_state;
-                Self::maybe_broadcast(&agent.model.status_tx, id, prev, new_state)
+                Self::maybe_broadcast(&actor.model.status_tx, id, prev, new_state)
             });
     }
 
     /// Configure request-reply message handlers
-    fn configure_request_handlers(builder: &mut ServiceCoordinatorBuilder) {
+    fn configure_request_handlers(builder: &mut ServiceCoordinatorActorBuilder) {
         builder
-            .mutate_on::<Subscribe>(|agent, envelope| {
-                let Some(tx) = envelope.message().response_tx.clone() else {
-                    return AgentReply::immediate();
+            .mutate_on::<Subscribe>(|actor, context| {
+                let Some(tx) = context.message().response_tx.clone() else {
+                    return Reply::ready();
                 };
-                let rx = agent.model.status_tx.subscribe();
-                AgentReply::from_async(async move { let _ = send_response(tx, rx).await; })
+                let rx = actor.model.status_tx.subscribe();
+                Reply::pending(async move { let _ = send_response(tx, rx).await; })
             })
-            .mutate_on::<GetServiceStatus>(|agent, envelope| {
-                let Some(tx) = envelope.message().response_tx.clone() else {
-                    return AgentReply::immediate();
+            .mutate_on::<GetServiceStatus>(|actor, context| {
+                let Some(tx) = context.message().response_tx.clone() else {
+                    return Reply::ready();
                 };
                 let response = ServiceStatusResponse {
-                    services: agent.model.services.iter()
+                    services: actor.model.services.iter()
                         .map(|(id, h)| (*id, (h.state, h.circuit.state)))
                         .collect(),
-                    health_check_count: agent.model.health_check_count,
-                    enabled: agent.model.config.enabled,
+                    health_check_count: actor.model.health_check_count,
+                    enabled: actor.model.config.enabled,
                 };
-                AgentReply::from_async(async move { let _ = send_response(tx, response).await; })
+                Reply::pending(async move { let _ = send_response(tx, response).await; })
             });
     }
 
     /// Configure config update handlers
-    fn configure_config_handlers(builder: &mut ServiceCoordinatorBuilder) {
-        builder.mutate_on::<UpdateConfig>(|agent, envelope| {
-            let config = &envelope.message().config;
-            for health in agent.model.services.values_mut() {
+    fn configure_config_handlers(builder: &mut ServiceCoordinatorActorBuilder) {
+        builder.mutate_on::<UpdateConfig>(|actor, context| {
+            let config = &context.message().config;
+            for health in actor.model.services.values_mut() {
                 health.circuit.failure_threshold = config.failure_threshold;
                 health.circuit.recovery_timeout = config.recovery_timeout;
             }
             for (service_id, endpoint) in &config.endpoints {
-                agent.model.services.entry(*service_id)
+                actor.model.services.entry(*service_id)
                     .or_insert_with(|| ServiceHealth::new(*service_id, endpoint.clone()));
             }
-            agent.model.config = config.clone();
+            actor.model.config = config.clone();
             tracing::info!("Service coordinator configuration updated");
-            AgentReply::immediate()
+            Reply::ready()
         });
     }
 
@@ -690,13 +693,13 @@ impl ServiceCoordinatorAgent {
         }
     }
 
-    /// Broadcast status event if state changed, otherwise return immediate
+    /// Broadcast status event if state changed, otherwise return ready
     fn maybe_broadcast(
         tx: &broadcast::Sender<ServiceStatusEvent>,
         id: ServiceId,
         prev: ServiceState,
         new: ServiceState,
-    ) -> Pin<Box<dyn Future<Output = ()> + Send + Sync + 'static>> {
+    ) -> FutureBox {
         if prev == new {
             return Box::pin(async {});
         }
@@ -859,14 +862,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_service_coordinator_spawn() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let result = ServiceCoordinatorAgent::spawn(&mut runtime).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_service_coordinator_get_status() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = ServiceCoordinatorAgent::spawn(&mut runtime).await.unwrap();
 
         let (request, rx) = GetServiceStatus::new();
@@ -880,7 +883,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_service_coordinator_subscribe() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = ServiceCoordinatorAgent::spawn(&mut runtime).await.unwrap();
 
         let (request, rx) = Subscribe::new();
@@ -892,7 +895,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_service_coordinator_health_check_updates_state() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = ServiceCoordinatorAgent::spawn(&mut runtime).await.unwrap();
 
         // Subscribe to events
@@ -925,7 +928,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_service_coordinator_circuit_breaker_integration() {
         let config = ServiceCoordinatorConfig::new().with_failure_threshold(2);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = ServiceCoordinatorAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();

@@ -14,7 +14,7 @@
 //! - Validated against POST/PUT/DELETE/PATCH requests
 
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
-use crate::htmx::agents::default_agent_config;
+use crate::htmx::agents::default_actor_config;
 use crate::htmx::auth::session::SessionId;
 use acton_reactive::prelude::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
@@ -23,8 +23,8 @@ use rand::Rng;
 use std::collections::HashMap;
 use tokio::sync::oneshot;
 
-// Type alias for the ManagedAgent builder type
-type CsrfAgentBuilder = ManagedAgent<Idle, CsrfManagerAgent>;
+// Type alias for the ManagedActor builder type
+type CsrfActorBuilder = ManagedActor<Idle, CsrfManagerAgent>;
 
 /// CSRF token string (base64url-encoded 32-byte random value)
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -186,69 +186,69 @@ impl DeleteToken {
 pub struct CleanupExpired;
 
 impl CsrfManagerAgent {
-    /// Spawn CSRF manager agent
+    /// Spawn CSRF manager actor
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
-    pub async fn spawn(runtime: &mut AgentRuntime) -> anyhow::Result<AgentHandle> {
-        let config = default_agent_config("csrf_manager")?;
-        let builder = runtime.new_agent_with_config::<Self>(config).await;
+    /// Returns error if actor initialization fails
+    pub async fn spawn(runtime: &mut ActorRuntime) -> anyhow::Result<ActorHandle> {
+        let config = default_actor_config("csrf_manager")?;
+        let builder = runtime.new_actor_with_config::<Self>(config);
         Self::configure_handlers(builder).await
     }
 
     /// Configure all message handlers for the CSRF manager
-    async fn configure_handlers(mut builder: CsrfAgentBuilder) -> anyhow::Result<AgentHandle> {
+    async fn configure_handlers(mut builder: CsrfActorBuilder) -> anyhow::Result<ActorHandle> {
         builder
-            // Unified handler for GetOrCreateToken (works for both web and agent-to-agent)
-            .mutate_on::<GetOrCreateToken>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let response_tx = envelope.message().response_tx.clone();
-                let reply_envelope = envelope.reply_envelope();
+            // Unified handler for GetOrCreateToken (works for both web and actor-to-actor)
+            .mutate_on::<GetOrCreateToken>(|actor, context| {
+                let session_id = context.message().session_id.clone();
+                let response_tx = context.message().response_tx.clone();
+                let reply_envelope = context.reply_envelope();
 
-                let token = Self::get_or_create_token_internal(&mut agent.model, &session_id);
+                let token = Self::get_or_create_token_internal(&mut actor.model, &session_id);
 
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     // Web handler response if channel provided
                     if let Some(tx) = response_tx {
                         let _ = send_response(tx, token.clone()).await;
                     }
-                    // Agent-to-agent response via envelope (always sent)
+                    // Actor-to-actor response via envelope (always sent)
                     let _: () = reply_envelope.send(token).await;
                 })
             })
-            // Unified handler for ValidateToken (works for both web and agent-to-agent)
-            .mutate_on::<ValidateToken>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let token = envelope.message().token.clone();
-                let response_tx = envelope.message().response_tx.clone();
-                let reply_envelope = envelope.reply_envelope();
+            // Unified handler for ValidateToken (works for both web and actor-to-actor)
+            .mutate_on::<ValidateToken>(|actor, context| {
+                let session_id = context.message().session_id.clone();
+                let token = context.message().token.clone();
+                let response_tx = context.message().response_tx.clone();
+                let reply_envelope = context.reply_envelope();
 
-                let valid = Self::validate_and_rotate_token(&mut agent.model, &session_id, &token);
+                let valid = Self::validate_and_rotate_token(&mut actor.model, &session_id, &token);
 
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     // Web handler response if channel provided
                     if let Some(tx) = response_tx {
                         let _ = send_response(tx, valid).await;
                     }
-                    // Agent-to-agent response via envelope (always sent)
+                    // Actor-to-actor response via envelope (always sent)
                     let _: () = reply_envelope.send(valid).await;
                 })
             })
             // Handler for DeleteToken (fire-and-forget)
-            .mutate_on::<DeleteToken>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                agent.model.tokens.remove(&session_id);
-                AgentReply::immediate()
+            .mutate_on::<DeleteToken>(|actor, context| {
+                let session_id = context.message().session_id.clone();
+                actor.model.tokens.remove(&session_id);
+                Reply::ready()
             })
             // Handler for CleanupExpired
-            .mutate_on::<CleanupExpired>(|agent, _envelope| {
-                agent.model.tokens.retain(|_session_id, data| !data.is_expired());
+            .mutate_on::<CleanupExpired>(|actor, _context| {
+                actor.model.tokens.retain(|_session_id, data| !data.is_expired());
                 tracing::debug!(
                     "Cleaned up expired CSRF tokens, {} tokens remaining",
-                    agent.model.tokens.len()
+                    actor.model.tokens.len()
                 );
-                AgentReply::immediate()
+                Reply::ready()
             });
 
         Ok(builder.start().await)
@@ -346,14 +346,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_csrf_manager_spawn() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let result = CsrfManagerAgent::spawn(&mut runtime).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_get_or_create_token() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = CsrfManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -374,7 +374,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_validate_token_success() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = CsrfManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -404,7 +404,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_validate_token_failure() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = CsrfManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -425,7 +425,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_delete_token() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = CsrfManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();

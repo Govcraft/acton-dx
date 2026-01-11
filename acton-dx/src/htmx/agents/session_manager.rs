@@ -10,7 +10,7 @@
 //! Messages with optional `response_tx` fields can be used from both contexts.
 
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
-use crate::htmx::agents::default_agent_config;
+use crate::htmx::agents::default_actor_config;
 use crate::htmx::auth::session::{FlashMessage, SessionData, SessionId};
 use acton_reactive::prelude::*;
 use chrono::{DateTime, Duration, Utc};
@@ -18,8 +18,8 @@ use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};
 use tokio::sync::oneshot;
 
-// Type alias for the ManagedAgent builder type
-type SessionAgentBuilder = ManagedAgent<Idle, SessionManagerAgent>;
+// Type alias for the ManagedActor builder type
+type SessionActorBuilder = ManagedActor<Idle, SessionManagerAgent>;
 
 #[cfg(feature = "redis")]
 use deadpool_redis::Pool as RedisPool;
@@ -167,16 +167,16 @@ pub struct AddFlash {
 }
 
 impl SessionManagerAgent {
-    /// Spawn session manager agent without Redis backend
+    /// Spawn session manager actor without Redis backend
     ///
     /// Uses in-memory storage only. Suitable for development or single-instance deployments.
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
-    pub async fn spawn(runtime: &mut AgentRuntime) -> anyhow::Result<AgentHandle> {
-        let config = default_agent_config("session_manager")?;
-        let builder = runtime.new_agent_with_config::<Self>(config).await;
+    /// Returns error if actor initialization fails
+    pub async fn spawn(runtime: &mut ActorRuntime) -> anyhow::Result<ActorHandle> {
+        let config = default_actor_config("session_manager")?;
+        let builder = runtime.new_actor_with_config::<Self>(config);
         Self::configure_handlers(builder).await
     }
 
@@ -186,31 +186,31 @@ impl SessionManagerAgent {
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
+    /// Returns error if actor initialization fails
     #[cfg(feature = "redis")]
     pub async fn spawn_with_redis(
-        runtime: &mut AgentRuntime,
+        runtime: &mut ActorRuntime,
         redis_pool: RedisPool,
-    ) -> anyhow::Result<AgentHandle> {
-        let config = default_agent_config("session_manager")?;
-        let mut builder = runtime.new_agent_with_config::<Self>(config).await;
+    ) -> anyhow::Result<ActorHandle> {
+        let config = default_actor_config("session_manager")?;
+        let mut builder = runtime.new_actor_with_config::<Self>(config);
         builder.model.redis = Some(redis_pool);
         Self::configure_handlers(builder).await
     }
 
     /// Configure all message handlers for the session manager
-    async fn configure_handlers(mut builder: SessionAgentBuilder) -> anyhow::Result<AgentHandle> {
+    async fn configure_handlers(mut builder: SessionActorBuilder) -> anyhow::Result<ActorHandle> {
         builder
             // ================================================================
-            // Unified Handlers (support both web and agent-to-agent patterns)
+            // Unified Handlers (support both web and actor-to-actor patterns)
             // ================================================================
-            .act_on::<LoadSession>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let response_tx = envelope.message().response_tx.clone();
-                let session = agent.model.sessions.get(&session_id).cloned();
-                let reply_envelope = envelope.reply_envelope();
+            .act_on::<LoadSession>(|actor, context| {
+                let session_id = context.message().session_id.clone();
+                let response_tx = context.message().response_tx.clone();
+                let session = actor.model.sessions.get(&session_id).cloned();
+                let reply_envelope = context.reply_envelope();
 
-                Box::pin(async move {
+                Reply::pending(async move {
                     // Use validate_and_touch to combine expiry check and touch
                     let result = session.and_then(|mut data| {
                         if data.validate_and_touch(Duration::hours(24)) {
@@ -225,71 +225,71 @@ impl SessionManagerAgent {
                         let _ = send_response(tx, result.clone()).await;
                     }
 
-                    // Always send reply envelope for agent-to-agent
+                    // Always send reply envelope for actor-to-actor
                     let _: () = reply_envelope.send(result).await;
                 })
             })
-            .mutate_on::<SaveSession>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let data = envelope.message().data.clone();
-                let response_tx = envelope.message().response_tx.clone();
+            .mutate_on::<SaveSession>(|actor, context| {
+                let session_id = context.message().session_id.clone();
+                let data = context.message().data.clone();
+                let response_tx = context.message().response_tx.clone();
 
-                agent
+                actor
                     .model
                     .sessions
                     .insert(session_id.clone(), data.clone());
-                agent
+                actor
                     .model
                     .expiry_queue
                     .push(Reverse((data.expires_at, session_id)));
 
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     // Send confirmation to web handler if channel provided
                     if let Some(tx) = response_tx {
                         let _ = send_response(tx, true).await;
                     }
                 })
             })
-            .mutate_on::<TakeFlashes>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let response_tx = envelope.message().response_tx.clone();
-                let reply_envelope = envelope.reply_envelope();
+            .mutate_on::<TakeFlashes>(|actor, context| {
+                let session_id = context.message().session_id.clone();
+                let response_tx = context.message().response_tx.clone();
+                let reply_envelope = context.reply_envelope();
 
                 // Take and clear flash messages atomically
-                let messages = agent
+                let messages = actor
                     .model
                     .sessions
                     .get_mut(&session_id)
                     .map(|session| std::mem::take(&mut session.flash_messages))
                     .unwrap_or_default();
 
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     // Send response to web handler if channel provided
                     if let Some(tx) = response_tx {
                         let _ = send_response(tx, messages.clone()).await;
                     }
 
-                    // Always send reply envelope for agent-to-agent
+                    // Always send reply envelope for actor-to-actor
                     let _: () = reply_envelope.send(messages).await;
                 })
             })
-            .mutate_on::<DeleteSession>(|agent, envelope| {
-                agent.model.sessions.remove(&envelope.message().session_id);
-                AgentReply::immediate()
+            .mutate_on::<DeleteSession>(|actor, context| {
+                actor.model.sessions.remove(&context.message().session_id);
+                Reply::ready()
             })
-            .mutate_on::<CleanupExpired>(|agent, _envelope| {
+            .mutate_on::<CleanupExpired>(|actor, _context| {
                 let now = Utc::now();
                 let mut expired = Vec::new();
 
                 loop {
-                    let should_pop = agent
+                    let should_pop = actor
                         .model
                         .expiry_queue
                         .peek()
                         .is_some_and(|Reverse((expiry, _))| *expiry <= now);
 
                     if should_pop {
-                        if let Some(Reverse((_, session_id))) = agent.model.expiry_queue.pop() {
+                        if let Some(Reverse((_, session_id))) = actor.model.expiry_queue.pop() {
                             expired.push(session_id);
                         }
                     } else {
@@ -298,20 +298,20 @@ impl SessionManagerAgent {
                 }
 
                 for session_id in expired {
-                    agent.model.sessions.remove(&session_id);
+                    actor.model.sessions.remove(&session_id);
                 }
 
-                AgentReply::immediate()
+                Reply::ready()
             })
-            .mutate_on::<AddFlash>(|agent, envelope| {
-                let session_id = envelope.message().session_id.clone();
-                let message = envelope.message().message.clone();
+            .mutate_on::<AddFlash>(|actor, context| {
+                let session_id = context.message().session_id.clone();
+                let message = context.message().message.clone();
 
-                if let Some(session) = agent.model.sessions.get_mut(&session_id) {
+                if let Some(session) = actor.model.sessions.get_mut(&session_id) {
                     session.flash_messages.push(message);
                 }
 
-                AgentReply::immediate()
+                Reply::ready()
             });
 
         Ok(builder.start().await)
@@ -324,7 +324,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_session_manager_creation() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let result = SessionManagerAgent::spawn(&mut runtime).await;
         assert!(result.is_ok());
         runtime.shutdown_all().await.expect("Failed to shutdown");
@@ -332,7 +332,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_session_save_and_load_with_verification() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -368,7 +368,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_session_not_found() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -390,7 +390,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_session_delete_with_verification() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -437,7 +437,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_flash_messages_with_verification() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -498,7 +498,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_session_expiry_cleanup() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -536,7 +536,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_session_touch_extends_expiry() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -573,7 +573,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_save_with_confirmation() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();
@@ -596,7 +596,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_concurrent_flash_messages() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let session_manager = SessionManagerAgent::spawn(&mut runtime).await.unwrap();
 
         let session_id = SessionId::generate();

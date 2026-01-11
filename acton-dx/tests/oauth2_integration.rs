@@ -12,7 +12,7 @@ use acton_dx::oauth2::{
     CleanupExpired, GenerateState, OAuth2Agent, OAuthConfig, OAuthProvider, ProviderConfig,
     RemoveState, ValidateState,
 };
-use acton_reactive::prelude::{ActonApp, AgentHandleInterface};
+use acton_reactive::prelude::{ActonApp, ActorHandleInterface};
 
 /// Helper to create a test OAuth2 configuration
 fn test_oauth_config() -> OAuthConfig {
@@ -41,7 +41,7 @@ fn test_oauth_config() -> OAuthConfig {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_oauth_state_token_generation() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let oauth2_agent = OAuth2Agent::spawn(&mut runtime)
         .await
         .expect("Failed to spawn OAuth2 agent");
@@ -62,7 +62,7 @@ async fn test_oauth_state_token_generation() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_oauth_state_token_validation() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let oauth2_agent = OAuth2Agent::spawn(&mut runtime)
         .await
         .expect("Failed to spawn OAuth2 agent");
@@ -91,7 +91,7 @@ async fn test_oauth_state_token_validation() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_oauth_state_token_validation_fails_for_invalid_token() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let oauth2_agent = OAuth2Agent::spawn(&mut runtime)
         .await
         .expect("Failed to spawn OAuth2 agent");
@@ -112,7 +112,7 @@ async fn test_oauth_state_token_validation_fails_for_invalid_token() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_oauth_state_token_one_time_use() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let oauth2_agent = OAuth2Agent::spawn(&mut runtime)
         .await
         .expect("Failed to spawn OAuth2 agent");
@@ -151,7 +151,7 @@ async fn test_oauth_state_token_one_time_use() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_oauth_state_cleanup_expired_tokens() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let oauth2_agent = OAuth2Agent::spawn(&mut runtime)
         .await
         .expect("Failed to spawn OAuth2 agent");
@@ -217,7 +217,7 @@ async fn test_oauth_provider_config_from_config() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_oauth_multiple_state_tokens_can_coexist() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let oauth2_agent = OAuth2Agent::spawn(&mut runtime)
         .await
         .expect("Failed to spawn OAuth2 agent");

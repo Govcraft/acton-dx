@@ -63,15 +63,15 @@ impl SessionManagerAgent {
     ///
     /// Panics if the ERN "auth-service" is invalid (which should not happen).
     pub async fn spawn(
-        runtime: &mut AgentRuntime,
+        runtime: &mut ActorRuntime,
         cleanup_interval_secs: u64,
-    ) -> anyhow::Result<AgentHandle> {
-        let config = AgentConfig::new(
+    ) -> anyhow::Result<ActorHandle> {
+        let config = ActorConfig::new(
             Ern::with_root("auth-service").expect("auth-service is a valid ERN"),
             None,
             None,
         )?;
-        let mut builder = runtime.new_agent_with_config::<Self>(config).await;
+        let mut builder = runtime.new_actor_with_config::<Self>(config);
         builder.model = Self::new(cleanup_interval_secs);
         let cleanup_interval = builder.model.cleanup_interval_secs;
 
@@ -83,55 +83,55 @@ impl SessionManagerAgent {
     }
 
     /// Configure all message handlers using inline closures that delegate to logic helpers.
-    fn configure_handlers(builder: &mut ManagedAgent<Idle, Self>) {
+    fn configure_handlers(builder: &mut ManagedActor<Idle, Self>) {
         builder
-            .mutate_on::<CreateSession>(|agent, envelope| {
-                let msg = envelope.message();
+            .mutate_on::<CreateSession>(|agent, ctx| {
+                let msg = ctx.message();
                 let session = SessionData::new(msg.ttl_seconds, msg.user_id);
                 let response_session = session.clone();
                 let response_tx = msg.response_tx.clone();
                 agent.model.sessions.insert(session.session_id.clone(), session);
-                AgentReply::from_async(send_optional_response(response_tx, response_session))
+                Reply::pending(send_optional_response(response_tx, response_session))
             })
-            .act_on::<LoadSession>(|agent, envelope| {
-                let msg = envelope.message();
+            .act_on::<LoadSession>(|agent, ctx| {
+                let msg = ctx.message();
                 let session = agent.model.sessions.get(&msg.session_id).cloned();
                 let response_tx = msg.response_tx.clone();
-                Box::pin(send_optional_response(response_tx, session))
+                Reply::pending(send_optional_response(response_tx, session))
             })
-            .mutate_on::<UpdateSession>(|agent, envelope| {
-                let msg = envelope.message();
+            .mutate_on::<UpdateSession>(|agent, ctx| {
+                let msg = ctx.message();
                 let result = update_session_data(&mut agent.model.sessions, msg);
                 let response_tx = msg.response_tx.clone();
-                AgentReply::from_async(send_optional_response(response_tx, result))
+                Reply::pending(send_optional_response(response_tx, result))
             })
-            .mutate_on::<DeleteSession>(|agent, envelope| {
-                let msg = envelope.message();
+            .mutate_on::<DeleteSession>(|agent, ctx| {
+                let msg = ctx.message();
                 let deleted = agent.model.sessions.remove(&msg.session_id).is_some();
                 let response_tx = msg.response_tx.clone();
-                AgentReply::from_async(send_optional_response(response_tx, deleted))
+                Reply::pending(send_optional_response(response_tx, deleted))
             })
-            .mutate_on::<AddFlash>(|agent, envelope| {
-                let msg = envelope.message();
+            .mutate_on::<AddFlash>(|agent, ctx| {
+                let msg = ctx.message();
                 let success = add_flash_to_session(&mut agent.model.sessions, msg);
                 let response_tx = msg.response_tx.clone();
-                AgentReply::from_async(send_optional_response(response_tx, success))
+                Reply::pending(send_optional_response(response_tx, success))
             })
-            .mutate_on::<TakeFlashes>(|agent, envelope| {
-                let msg = envelope.message();
+            .mutate_on::<TakeFlashes>(|agent, ctx| {
+                let msg = ctx.message();
                 let flashes = take_flashes_from_session(&mut agent.model.sessions, &msg.session_id);
                 let response_tx = msg.response_tx.clone();
-                AgentReply::from_async(send_optional_response(response_tx, flashes))
+                Reply::pending(send_optional_response(response_tx, flashes))
             })
-            .mutate_on::<CleanupExpired>(|agent, _envelope| {
+            .mutate_on::<CleanupExpired>(|agent, _ctx| {
                 agent.model.sessions.retain(|_, session| !session.is_expired());
                 tracing::debug!("Cleaned up sessions, remaining: {}", agent.model.sessions.len());
-                AgentReply::immediate()
+                Reply::ready()
             });
     }
 
     /// Spawn the periodic cleanup background task.
-    fn spawn_cleanup_task(handle: AgentHandle, interval_secs: u64) {
+    fn spawn_cleanup_task(handle: ActorHandle, interval_secs: u64) {
         tokio::spawn(async move {
             let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
             loop {
@@ -359,11 +359,11 @@ pub struct CleanupExpired;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use acton_reactive::prelude::AgentHandleInterface;
+    use acton_reactive::prelude::ActorHandleInterface;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_create_and_load_session() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let agent = SessionManagerAgent::spawn(&mut runtime, 300).await.unwrap();
 
         // Create a session
@@ -401,7 +401,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_delete_session() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let agent = SessionManagerAgent::spawn(&mut runtime, 300).await.unwrap();
 
         // Create a session
@@ -451,7 +451,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_flash_messages() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let agent = SessionManagerAgent::spawn(&mut runtime, 300).await.unwrap();
 
         // Create a session

@@ -8,7 +8,7 @@ use crate::htmx::jobs::JobAgent;
 use crate::htmx::oauth2::OAuth2Agent;
 use crate::htmx::template::FrameworkTemplates;
 use crate::htmx::{config::ActonHtmxConfig, observability::ObservabilityConfig};
-use acton_reactive::prelude::{AgentHandle, AgentRuntime};
+use acton_reactive::prelude::{ActorHandle, ActorRuntime};
 use std::sync::Arc;
 
 #[cfg(feature = "postgres")]
@@ -45,7 +45,7 @@ use crate::htmx::clients::{ServiceRegistry, ServicesConfig};
 /// #[tokio::main]
 /// async fn main() -> anyhow::Result<()> {
 ///     // Launch the Acton runtime - keep ownership in main
-///     let mut runtime = ActonApp::launch();
+///     let mut runtime = ActonApp::launch_async().await;
 ///
 ///     // Create application state with agents
 ///     let state = ActonHtmxState::new(&mut runtime).await?;
@@ -72,23 +72,23 @@ pub struct ActonHtmxState {
 
     /// Session manager agent handle
     ///
-    /// Clone this freely - `AgentHandle` is designed for concurrent access
-    session_manager: AgentHandle,
+    /// Clone this freely - `ActorHandle` is designed for concurrent access
+    session_manager: ActorHandle,
 
     /// CSRF manager agent handle
     ///
-    /// Clone this freely - `AgentHandle` is designed for concurrent access
-    csrf_manager: AgentHandle,
+    /// Clone this freely - `ActorHandle` is designed for concurrent access
+    csrf_manager: ActorHandle,
 
     /// OAuth2 manager agent handle
     ///
-    /// Clone this freely - `AgentHandle` is designed for concurrent access
-    oauth2_manager: AgentHandle,
+    /// Clone this freely - `ActorHandle` is designed for concurrent access
+    oauth2_manager: ActorHandle,
 
     /// Job processing agent handle
     ///
-    /// Clone this freely - `AgentHandle` is designed for concurrent access
-    job_agent: AgentHandle,
+    /// Clone this freely - `ActorHandle` is designed for concurrent access
+    job_agent: ActorHandle,
 
     /// PostgreSQL database connection pool
     ///
@@ -141,10 +141,10 @@ impl ActonHtmxState {
     /// use acton_htmx::state::ActonHtmxState;
     /// use acton_reactive::prelude::ActonApp;
     ///
-    /// let mut runtime = ActonApp::launch();
+    /// let mut runtime = ActonApp::launch_async().await;
     /// let state = ActonHtmxState::new(&mut runtime).await?;
     /// ```
-    pub async fn new(runtime: &mut AgentRuntime) -> anyhow::Result<Self> {
+    pub async fn new(runtime: &mut ActorRuntime) -> anyhow::Result<Self> {
         let config = ActonHtmxConfig::default();
         let observability = ObservabilityConfig::default();
         let session_manager = SessionManagerAgent::spawn(runtime).await?;
@@ -189,12 +189,12 @@ impl ActonHtmxState {
     /// use acton_htmx::{config::ActonHtmxConfig, state::ActonHtmxState};
     /// use acton_reactive::prelude::ActonApp;
     ///
-    /// let mut runtime = ActonApp::launch();
+    /// let mut runtime = ActonApp::launch_async().await;
     /// let config = ActonHtmxConfig::load_for_service("my-app")?;
     /// let state = ActonHtmxState::with_config(&mut runtime, config).await?;
     /// ```
     pub async fn with_config(
-        runtime: &mut AgentRuntime,
+        runtime: &mut ActorRuntime,
         config: ActonHtmxConfig,
     ) -> anyhow::Result<Self> {
         let observability = ObservabilityConfig::new("acton-dx");
@@ -282,7 +282,7 @@ impl ActonHtmxState {
     /// }
     /// ```
     #[must_use]
-    pub const fn session_manager(&self) -> &AgentHandle {
+    pub const fn session_manager(&self) -> &ActorHandle {
         &self.session_manager
     }
 
@@ -303,7 +303,7 @@ impl ActonHtmxState {
     /// }
     /// ```
     #[must_use]
-    pub const fn csrf_manager(&self) -> &AgentHandle {
+    pub const fn csrf_manager(&self) -> &ActorHandle {
         &self.csrf_manager
     }
 
@@ -324,7 +324,7 @@ impl ActonHtmxState {
     /// }
     /// ```
     #[must_use]
-    pub const fn oauth2_agent(&self) -> &AgentHandle {
+    pub const fn oauth2_agent(&self) -> &ActorHandle {
         &self.oauth2_manager
     }
 
@@ -345,7 +345,7 @@ impl ActonHtmxState {
     /// }
     /// ```
     #[must_use]
-    pub const fn job_agent(&self) -> &AgentHandle {
+    pub const fn job_agent(&self) -> &ActorHandle {
         &self.job_agent
     }
 
@@ -626,7 +626,7 @@ impl ActonHtmxState {
     /// }
     /// ```
     pub async fn get_job_metrics(&self) -> Result<super::jobs::agent::JobMetrics, anyhow::Error> {
-        use acton_reactive::prelude::AgentHandleInterface;
+        use acton_reactive::prelude::ActorHandleInterface;
         use super::jobs::agent::GetMetricsRequest;
         use std::time::Duration;
 
@@ -673,7 +673,7 @@ impl ActonHtmxState {
         &self,
         id: super::jobs::JobId,
     ) -> Result<Option<super::jobs::JobStatus>, anyhow::Error> {
-        use acton_reactive::prelude::AgentHandleInterface;
+        use acton_reactive::prelude::ActorHandleInterface;
         use super::jobs::agent::GetJobStatusRequest;
         use std::time::Duration;
 
@@ -692,7 +692,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_new_state() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let state = ActonHtmxState::new(&mut runtime)
             .await
             .expect("Failed to create state");
@@ -701,7 +701,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_with_config() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let mut config = ActonHtmxConfig::default();
         config.htmx.request_timeout_ms = 10000;
 
@@ -714,7 +714,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_clone_state() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let state = ActonHtmxState::new(&mut runtime)
             .await
             .expect("Failed to create state");
@@ -726,7 +726,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_session_manager_accessible() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let state = ActonHtmxState::new(&mut runtime)
             .await
             .expect("Failed to create state");

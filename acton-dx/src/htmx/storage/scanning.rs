@@ -752,7 +752,7 @@ mod tests {
             port: 9999, // Non-existent port
         });
 
-        let result = scanner.scan(&file).await;
+        let result = scanner.scan(&file);
         // Should fail with connection error
         assert!(result.is_err());
         if let Err(StorageError::Other(msg)) = result {

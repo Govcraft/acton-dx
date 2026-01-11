@@ -34,7 +34,7 @@ fn bench_rate_limiter_single_request(c: &mut Criterion) {
         let config = RateLimiterConfig::new()
             .with_bucket_capacity(10_000)
             .with_refill_rate(1000.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap()
@@ -61,7 +61,7 @@ fn bench_rate_limiter_key_scaling(c: &mut Criterion) {
         let config = RateLimiterConfig::new()
             .with_bucket_capacity(10_000)
             .with_refill_rate(1000.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap()
@@ -100,7 +100,7 @@ fn bench_rate_limiter_get_stats(c: &mut Criterion) {
         let config = RateLimiterConfig::new()
             .with_bucket_capacity(10_000)
             .with_refill_rate(1000.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -136,7 +136,7 @@ fn bench_service_coordinator_get_status(c: &mut Criterion) {
         let config = ServiceCoordinatorConfig::new()
             .with_failure_threshold(5)
             .with_recovery_timeout(Duration::from_secs(30));
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = ServiceCoordinatorAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -191,7 +191,7 @@ fn bench_service_coordinator_health_check(c: &mut Criterion) {
         let config = ServiceCoordinatorConfig::new()
             .with_failure_threshold(5)
             .with_recovery_timeout(Duration::from_secs(30));
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = ServiceCoordinatorAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -223,7 +223,7 @@ fn bench_hot_reload_file_change(c: &mut Criterion) {
         let config = HotReloadConfig::new()
             .with_enabled(true)
             .with_debounce(ReloadType::Templates, Duration::from_millis(10));
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         HotReloadCoordinatorAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap()
@@ -251,7 +251,7 @@ fn bench_hot_reload_get_stats(c: &mut Criterion) {
 
     let handle = rt.block_on(async {
         let config = HotReloadConfig::new().with_enabled(true);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         HotReloadCoordinatorAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap()
@@ -278,7 +278,7 @@ fn bench_rate_limiter_concurrent(c: &mut Criterion) {
         let config = RateLimiterConfig::new()
             .with_bucket_capacity(100_000)
             .with_refill_rate(10_000.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap()
@@ -341,7 +341,7 @@ fn bench_agent_overhead_comparison(c: &mut Criterion) {
         let config = RateLimiterConfig::new()
             .with_bucket_capacity(100_000)
             .with_refill_rate(10_000.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap()

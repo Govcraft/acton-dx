@@ -11,20 +11,20 @@ use acton_dx_proto::auth::v1::{
     Session as ProtoSession, UpdateSessionRequest, UpdateSessionResponse, ValidateSessionRequest,
     ValidateSessionResponse,
 };
-use acton_reactive::prelude::{AgentHandle, AgentHandleInterface};
+use acton_reactive::prelude::{ActorHandle, ActorHandleInterface};
 use std::time::Duration;
 use tonic::{Request, Response, Status};
 
 /// gRPC Session Service implementation.
 #[derive(Debug, Clone)]
 pub struct SessionServiceImpl {
-    session_agent: AgentHandle,
+    session_agent: ActorHandle,
 }
 
 impl SessionServiceImpl {
     /// Create a new session service implementation.
     #[must_use]
-    pub const fn new(session_agent: AgentHandle) -> Self {
+    pub const fn new(session_agent: ActorHandle) -> Self {
         Self { session_agent }
     }
 }

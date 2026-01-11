@@ -22,7 +22,7 @@ use std::time::Duration;
 /// Test that all agents can be spawned together without conflicts
 #[tokio::test(flavor = "multi_thread")]
 async fn test_all_agents_spawn_together() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
 
     // Spawn all agents
     let hot_reload_handle = HotReloadCoordinatorAgent::spawn(&mut runtime)
@@ -59,7 +59,7 @@ async fn test_all_agents_spawn_together() {
 /// Test service coordinator tracking multiple services
 #[tokio::test(flavor = "multi_thread")]
 async fn test_service_coordinator_tracks_multiple_services() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = ServiceCoordinatorAgent::spawn(&mut runtime)
         .await
         .expect("Should spawn");
@@ -95,7 +95,7 @@ async fn test_service_coordinator_tracks_multiple_services() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_service_failure_cascade() {
     let config = ServiceCoordinatorConfig::new().with_failure_threshold(3);
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = ServiceCoordinatorAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -142,7 +142,7 @@ async fn test_rate_limiter_multiple_keys() {
         .with_bucket_capacity(5)
         .with_refill_rate(0.0);
 
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -180,7 +180,7 @@ async fn test_hot_reload_debouncing() {
     let config =
         HotReloadConfig::new().with_debounce(ReloadType::Templates, Duration::from_millis(50));
 
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = HotReloadCoordinatorAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -222,7 +222,7 @@ async fn test_rate_limiter_graceful_degradation() {
         .with_bucket_capacity(1)
         .with_enabled(false);
 
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -243,7 +243,7 @@ async fn test_rate_limiter_concurrent_access() {
         .with_bucket_capacity(100)
         .with_refill_rate(0.0);
 
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -283,7 +283,7 @@ async fn test_rate_limiter_concurrent_access() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_service_recovery() {
     let config = ServiceCoordinatorConfig::new().with_failure_threshold(2);
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = ServiceCoordinatorAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -334,7 +334,7 @@ async fn test_rate_limiter_bucket_cleanup() {
         .with_bucket_capacity(10)
         .with_bucket_expiration(Duration::from_millis(50));
 
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -373,7 +373,7 @@ async fn test_rate_limiter_reset_bucket() {
         .with_bucket_capacity(3)
         .with_refill_rate(0.0);
 
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
         .await
         .expect("Should spawn");
@@ -405,7 +405,7 @@ async fn test_rate_limiter_reset_bucket() {
 /// Test health check count tracking
 #[tokio::test(flavor = "multi_thread")]
 async fn test_service_coordinator_health_check_count() {
-    let mut runtime = ActonApp::launch();
+    let mut runtime = ActonApp::launch_async().await;
     let handle = ServiceCoordinatorAgent::spawn(&mut runtime)
         .await
         .expect("Should spawn");

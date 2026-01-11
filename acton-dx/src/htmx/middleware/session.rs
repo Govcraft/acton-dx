@@ -7,7 +7,7 @@
 use crate::htmx::agents::{LoadSession, SaveSession};
 use crate::htmx::auth::session::{SessionData, SessionId};
 use crate::htmx::state::ActonHtmxState;
-use acton_reactive::prelude::{AgentHandle, AgentHandleInterface};
+use acton_reactive::prelude::{ActorHandle, ActorHandleInterface};
 use axum::{
     body::Body,
     extract::Request,
@@ -87,14 +87,14 @@ impl SameSite {
 #[derive(Clone)]
 pub struct SessionLayer {
     config: SessionConfig,
-    session_manager: AgentHandle,
+    session_manager: ActorHandle,
 }
 
 impl std::fmt::Debug for SessionLayer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SessionLayer")
             .field("config", &self.config)
-            .field("session_manager", &"AgentHandle")
+            .field("session_manager", &"ActorHandle")
             .finish()
     }
 }
@@ -120,7 +120,7 @@ impl SessionLayer {
 
     /// Create session layer from an existing agent handle
     #[must_use]
-    pub fn from_handle(session_manager: AgentHandle) -> Self {
+    pub fn from_handle(session_manager: ActorHandle) -> Self {
         Self {
             config: SessionConfig::default(),
             session_manager,
@@ -148,7 +148,7 @@ impl<S> Layer<S> for SessionLayer {
 pub struct SessionMiddleware<S> {
     inner: S,
     config: Arc<SessionConfig>,
-    session_manager: AgentHandle,
+    session_manager: ActorHandle,
 }
 
 impl<S: std::fmt::Debug> std::fmt::Debug for SessionMiddleware<S> {
@@ -156,7 +156,7 @@ impl<S: std::fmt::Debug> std::fmt::Debug for SessionMiddleware<S> {
         f.debug_struct("SessionMiddleware")
             .field("inner", &self.inner)
             .field("config", &self.config)
-            .field("session_manager", &"AgentHandle")
+            .field("session_manager", &"ActorHandle")
             .finish()
     }
 }

@@ -13,7 +13,7 @@
 //! - Graceful shutdown of watchers
 //! - Broadcast notifications for reloads
 
-use crate::htmx::agents::default_agent_config;
+use crate::htmx::agents::default_actor_config;
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
 use acton_reactive::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -189,8 +189,8 @@ impl PendingChange {
     }
 }
 
-// Type alias for the agent builder
-type HotReloadAgentBuilder = ManagedAgent<Idle, HotReloadCoordinatorAgent>;
+// Type alias for the actor builder
+type HotReloadActorBuilder = ManagedActor<Idle, HotReloadCoordinatorAgent>;
 
 /// Hot reload coordinator agent model
 #[derive(Debug)]
@@ -336,26 +336,26 @@ impl HotReloadCoordinatorAgent {
         }
     }
 
-    /// Spawn hot reload coordinator agent
+    /// Spawn hot reload coordinator actor
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
-    pub async fn spawn(runtime: &mut AgentRuntime) -> anyhow::Result<AgentHandle> {
+    /// Returns error if actor initialization fails
+    pub async fn spawn(runtime: &mut ActorRuntime) -> anyhow::Result<ActorHandle> {
         Self::spawn_with_config(runtime, HotReloadConfig::default()).await
     }
 
-    /// Spawn hot reload coordinator agent with custom configuration
+    /// Spawn hot reload coordinator actor with custom configuration
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
+    /// Returns error if actor initialization fails
     pub async fn spawn_with_config(
-        runtime: &mut AgentRuntime,
+        runtime: &mut ActorRuntime,
         config: HotReloadConfig,
-    ) -> anyhow::Result<AgentHandle> {
-        let agent_config = default_agent_config("hot_reload_coordinator")?;
-        let mut builder = runtime.new_agent_with_config::<Self>(agent_config).await;
+    ) -> anyhow::Result<ActorHandle> {
+        let actor_config = default_actor_config("hot_reload_coordinator")?;
+        let mut builder = runtime.new_actor_with_config::<Self>(actor_config);
 
         // Update the model with the custom configuration
         builder.model.config = config;
@@ -364,62 +364,62 @@ impl HotReloadCoordinatorAgent {
     }
 
     /// Configure all message handlers
-    async fn configure_handlers(mut builder: HotReloadAgentBuilder) -> anyhow::Result<AgentHandle> {
+    async fn configure_handlers(mut builder: HotReloadActorBuilder) -> anyhow::Result<ActorHandle> {
         builder
             // Handle file change events
-            .mutate_on::<FileChanged>(|agent, envelope| {
-                let reload_type = envelope.message().reload_type;
-                let path = envelope.message().path.clone();
+            .mutate_on::<FileChanged>(|actor, context| {
+                let reload_type = context.message().reload_type;
+                let path = context.message().path.clone();
 
-                if agent.model.config.enabled {
-                    Self::record_file_change(&mut agent.model, reload_type, path);
+                if actor.model.config.enabled {
+                    Self::record_file_change(&mut actor.model, reload_type, path);
                 }
 
-                AgentReply::immediate()
+                Reply::ready()
             })
             // Handle force reload
-            .mutate_on::<ForceReload>(|agent, envelope| {
-                let reload_type = envelope.message().reload_type;
-                let reload_tx = agent.model.reload_tx.clone();
+            .mutate_on::<ForceReload>(|actor, context| {
+                let reload_type = context.message().reload_type;
+                let reload_tx = actor.model.reload_tx.clone();
 
-                if agent.model.config.enabled {
+                if actor.model.config.enabled {
                     // Take any pending paths for this type
-                    let paths = agent
+                    let paths = actor
                         .model
                         .pending_changes
                         .remove(&reload_type)
                         .map(PendingChange::into_paths)
                         .unwrap_or_default();
 
-                    agent.model.reload_count += 1;
+                    actor.model.reload_count += 1;
                     let event = ReloadEvent::new(reload_type, paths);
 
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         let _ = reload_tx.send(event);
                     })
                 } else {
-                    AgentReply::immediate()
+                    Reply::ready()
                 }
             })
             // Handle periodic trigger for pending reloads
-            .mutate_on::<TriggerPendingReloads>(|agent, _envelope| {
-                if !agent.model.config.enabled {
-                    return AgentReply::immediate();
+            .mutate_on::<TriggerPendingReloads>(|actor, _context| {
+                if !actor.model.config.enabled {
+                    return Reply::ready();
                 }
 
                 let mut events_to_send = Vec::new();
 
                 // Check each pending change type
-                let reload_types: Vec<_> = agent.model.pending_changes.keys().copied().collect();
+                let reload_types: Vec<_> = actor.model.pending_changes.keys().copied().collect();
                 for reload_type in reload_types {
-                    let debounce = agent.model.config.debounce_for(reload_type);
+                    let debounce = actor.model.config.debounce_for(reload_type);
 
-                    if let Some(pending) = agent.model.pending_changes.get(&reload_type) {
+                    if let Some(pending) = actor.model.pending_changes.get(&reload_type) {
                         if pending.should_trigger(debounce) {
                             // Time to trigger this reload
-                            if let Some(pending) = agent.model.pending_changes.remove(&reload_type)
+                            if let Some(pending) = actor.model.pending_changes.remove(&reload_type)
                             {
-                                agent.model.reload_count += 1;
+                                actor.model.reload_count += 1;
                                 events_to_send.push(ReloadEvent::new(
                                     reload_type,
                                     pending.into_paths(),
@@ -430,10 +430,10 @@ impl HotReloadCoordinatorAgent {
                 }
 
                 if events_to_send.is_empty() {
-                    AgentReply::immediate()
+                    Reply::ready()
                 } else {
-                    let reload_tx = agent.model.reload_tx.clone();
-                    AgentReply::from_async(async move {
+                    let reload_tx = actor.model.reload_tx.clone();
+                    Reply::pending(async move {
                         for event in events_to_send {
                             let _ = reload_tx.send(event);
                         }
@@ -441,46 +441,46 @@ impl HotReloadCoordinatorAgent {
                 }
             })
             // Handle subscribe requests
-            .mutate_on::<Subscribe>(|agent, envelope| {
-                let response_tx = envelope.message().response_tx.clone();
-                let rx = agent.model.reload_tx.subscribe();
+            .mutate_on::<Subscribe>(|actor, context| {
+                let response_tx = context.message().response_tx.clone();
+                let rx = actor.model.reload_tx.subscribe();
 
                 if let Some(tx) = response_tx {
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         let _ = send_response(tx, rx).await;
                     })
                 } else {
-                    AgentReply::immediate()
+                    Reply::ready()
                 }
             })
             // Handle get stats requests
-            .mutate_on::<GetStats>(|agent, envelope| {
-                let response_tx = envelope.message().response_tx.clone();
+            .mutate_on::<GetStats>(|actor, context| {
+                let response_tx = context.message().response_tx.clone();
 
                 let stats = HotReloadStats {
-                    reload_count: agent.model.reload_count,
-                    pending_counts: agent
+                    reload_count: actor.model.reload_count,
+                    pending_counts: actor
                         .model
                         .pending_changes
                         .iter()
                         .map(|(k, v)| (*k, v.paths.len()))
                         .collect(),
-                    enabled: agent.model.config.enabled,
+                    enabled: actor.model.config.enabled,
                 };
 
                 if let Some(tx) = response_tx {
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         let _ = send_response(tx, stats).await;
                     })
                 } else {
-                    AgentReply::immediate()
+                    Reply::ready()
                 }
             })
             // Handle config updates
-            .mutate_on::<UpdateConfig>(|agent, envelope| {
-                agent.model.config = envelope.message().config.clone();
+            .mutate_on::<UpdateConfig>(|actor, context| {
+                actor.model.config = context.message().config.clone();
                 tracing::info!("Hot reload configuration updated");
-                AgentReply::immediate()
+                Reply::ready()
             });
 
         Ok(builder.start().await)
@@ -569,14 +569,14 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_hot_reload_agent_spawn() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let result = HotReloadCoordinatorAgent::spawn(&mut runtime).await;
         assert!(result.is_ok());
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_hot_reload_subscribe() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = HotReloadCoordinatorAgent::spawn(&mut runtime).await.unwrap();
 
         let (request, rx) = Subscribe::new();
@@ -589,7 +589,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_hot_reload_stats() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = HotReloadCoordinatorAgent::spawn(&mut runtime).await.unwrap();
 
         let (request, rx) = GetStats::new();
@@ -602,7 +602,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_hot_reload_file_change_and_force_reload() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = HotReloadCoordinatorAgent::spawn(&mut runtime).await.unwrap();
 
         // Subscribe to events

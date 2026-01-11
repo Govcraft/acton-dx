@@ -10,7 +10,7 @@
 //! - Configurable bucket size and refill rate
 //! - Automatic cleanup of expired buckets
 
-use crate::htmx::agents::default_agent_config;
+use crate::htmx::agents::default_actor_config;
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
 use acton_reactive::prelude::*;
 use std::collections::HashMap;
@@ -172,8 +172,8 @@ impl RateLimiterConfig {
     }
 }
 
-// Type alias for the agent builder
-type RateLimiterBuilder = ManagedAgent<Idle, RateLimiterAgent>;
+// Type alias for the actor builder
+type RateLimiterActorBuilder = ManagedActor<Idle, RateLimiterAgent>;
 
 /// Rate limiter agent model
 #[derive(Debug)]
@@ -343,26 +343,26 @@ impl RateLimiterAgent {
         }
     }
 
-    /// Spawn rate limiter agent
+    /// Spawn rate limiter actor
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
-    pub async fn spawn(runtime: &mut AgentRuntime) -> anyhow::Result<AgentHandle> {
+    /// Returns error if actor initialization fails
+    pub async fn spawn(runtime: &mut ActorRuntime) -> anyhow::Result<ActorHandle> {
         Self::spawn_with_config(runtime, RateLimiterConfig::default()).await
     }
 
-    /// Spawn rate limiter agent with custom configuration
+    /// Spawn rate limiter actor with custom configuration
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails
+    /// Returns error if actor initialization fails
     pub async fn spawn_with_config(
-        runtime: &mut AgentRuntime,
+        runtime: &mut ActorRuntime,
         config: RateLimiterConfig,
-    ) -> anyhow::Result<AgentHandle> {
-        let agent_config = default_agent_config("rate_limiter")?;
-        let mut builder = runtime.new_agent_with_config::<Self>(agent_config).await;
+    ) -> anyhow::Result<ActorHandle> {
+        let actor_config = default_actor_config("rate_limiter")?;
+        let mut builder = runtime.new_actor_with_config::<Self>(actor_config);
 
         builder.model.config = config;
 
@@ -370,44 +370,44 @@ impl RateLimiterAgent {
     }
 
     /// Configure all message handlers
-    async fn configure_handlers(mut builder: RateLimiterBuilder) -> anyhow::Result<AgentHandle> {
+    async fn configure_handlers(mut builder: RateLimiterActorBuilder) -> anyhow::Result<ActorHandle> {
         Self::configure_rate_limit_handlers(&mut builder);
         Self::configure_admin_handlers(&mut builder);
         Ok(builder.start().await)
     }
 
     /// Configure rate limiting handlers
-    fn configure_rate_limit_handlers(builder: &mut RateLimiterBuilder) {
-        builder.mutate_on::<CheckRateLimit>(|agent, envelope| {
-            let msg = envelope.message();
-            agent.model.request_count += 1;
+    fn configure_rate_limit_handlers(builder: &mut RateLimiterActorBuilder) {
+        builder.mutate_on::<CheckRateLimit>(|actor, context| {
+            let msg = context.message();
+            actor.model.request_count += 1;
 
             // If disabled, always allow
-            if !agent.model.config.enabled {
+            if !actor.model.config.enabled {
                 let result = RateLimitResult {
                     allowed: true,
-                    remaining_tokens: agent.model.config.bucket_capacity,
+                    remaining_tokens: actor.model.config.bucket_capacity,
                     key: msg.key.clone(),
                 };
-                agent.model.allowed_count += 1;
+                actor.model.allowed_count += 1;
 
                 if let Some(tx) = msg.response_tx.clone() {
-                    return AgentReply::from_async(async move {
+                    return Reply::pending(async move {
                         let _ = send_response(tx, result).await;
                     });
                 }
-                return AgentReply::immediate();
+                return Reply::ready();
             }
 
             // Get or create bucket
-            let bucket = agent
+            let bucket = actor
                 .model
                 .buckets
                 .entry(msg.key.clone())
                 .or_insert_with(|| {
                     TokenBucket::new(
-                        agent.model.config.bucket_capacity,
-                        agent.model.config.refill_rate,
+                        actor.model.config.bucket_capacity,
+                        actor.model.config.refill_rate,
                     )
                 });
 
@@ -416,9 +416,9 @@ impl RateLimiterAgent {
             let remaining_tokens = bucket.available_tokens();
 
             if allowed {
-                agent.model.allowed_count += 1;
+                actor.model.allowed_count += 1;
             } else {
-                agent.model.denied_count += 1;
+                actor.model.denied_count += 1;
             }
 
             let result = RateLimitResult {
@@ -428,62 +428,62 @@ impl RateLimiterAgent {
             };
 
             if let Some(tx) = msg.response_tx.clone() {
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     let _ = send_response(tx, result).await;
                 })
             } else {
-                AgentReply::immediate()
+                Reply::ready()
             }
         });
     }
 
     /// Configure admin handlers
-    fn configure_admin_handlers(builder: &mut RateLimiterBuilder) {
+    fn configure_admin_handlers(builder: &mut RateLimiterActorBuilder) {
         builder
-            .mutate_on::<GetStats>(|agent, envelope| {
-                let Some(tx) = envelope.message().response_tx.clone() else {
-                    return AgentReply::immediate();
+            .mutate_on::<GetStats>(|actor, context| {
+                let Some(tx) = context.message().response_tx.clone() else {
+                    return Reply::ready();
                 };
 
                 let stats = RateLimiterStats {
-                    request_count: agent.model.request_count,
-                    allowed_count: agent.model.allowed_count,
-                    denied_count: agent.model.denied_count,
-                    bucket_count: agent.model.buckets.len(),
-                    enabled: agent.model.config.enabled,
+                    request_count: actor.model.request_count,
+                    allowed_count: actor.model.allowed_count,
+                    denied_count: actor.model.denied_count,
+                    bucket_count: actor.model.buckets.len(),
+                    enabled: actor.model.config.enabled,
                 };
 
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     let _ = send_response(tx, stats).await;
                 })
             })
-            .mutate_on::<CleanupExpired>(|agent, _envelope| {
-                let expiration = agent.model.config.bucket_expiration;
-                let before_count = agent.model.buckets.len();
+            .mutate_on::<CleanupExpired>(|actor, _context| {
+                let expiration = actor.model.config.bucket_expiration;
+                let before_count = actor.model.buckets.len();
 
-                agent
+                actor
                     .model
                     .buckets
                     .retain(|_, bucket| !bucket.is_expired(expiration));
 
-                let removed = before_count - agent.model.buckets.len();
+                let removed = before_count - actor.model.buckets.len();
                 if removed > 0 {
                     tracing::debug!(removed = removed, "Cleaned up expired rate limit buckets");
                 }
 
-                AgentReply::immediate()
+                Reply::ready()
             })
-            .mutate_on::<UpdateConfig>(|agent, envelope| {
-                agent.model.config = envelope.message().config.clone();
+            .mutate_on::<UpdateConfig>(|actor, context| {
+                actor.model.config = context.message().config.clone();
                 tracing::info!("Rate limiter configuration updated");
-                AgentReply::immediate()
+                Reply::ready()
             })
-            .mutate_on::<ResetBucket>(|agent, envelope| {
-                let key = &envelope.message().key;
-                if agent.model.buckets.remove(key).is_some() {
+            .mutate_on::<ResetBucket>(|actor, context| {
+                let key = &context.message().key;
+                if actor.model.buckets.remove(key).is_some() {
                     tracing::debug!(key = %key, "Reset rate limit bucket");
                 }
-                AgentReply::immediate()
+                Reply::ready()
             });
     }
 
@@ -602,7 +602,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rate_limiter_spawn() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let result = RateLimiterAgent::spawn(&mut runtime).await;
         assert!(result.is_ok());
     }
@@ -610,7 +610,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rate_limiter_allows_within_limit() {
         let config = RateLimiterConfig::new().with_bucket_capacity(10).with_refill_rate(0.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -628,7 +628,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rate_limiter_denies_over_limit() {
         let config = RateLimiterConfig::new().with_bucket_capacity(5).with_refill_rate(0.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -652,7 +652,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rate_limiter_different_keys() {
         let config = RateLimiterConfig::new().with_bucket_capacity(3).with_refill_rate(0.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -679,7 +679,7 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rate_limiter_get_stats() {
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn(&mut runtime).await.unwrap();
 
         // Make some requests
@@ -706,7 +706,7 @@ mod tests {
             .with_bucket_capacity(10)
             .with_refill_rate(0.0)
             .with_bucket_expiration(Duration::from_millis(50));
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -743,7 +743,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rate_limiter_reset_bucket() {
         let config = RateLimiterConfig::new().with_bucket_capacity(5).with_refill_rate(0.0);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -780,7 +780,7 @@ mod tests {
             .with_bucket_capacity(1)
             .with_refill_rate(0.0)
             .with_enabled(false);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();
@@ -797,7 +797,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn test_rate_limiter_update_config() {
         let config = RateLimiterConfig::new().with_bucket_capacity(5).with_enabled(true);
-        let mut runtime = ActonApp::launch();
+        let mut runtime = ActonApp::launch_async().await;
         let handle = RateLimiterAgent::spawn_with_config(&mut runtime, config)
             .await
             .unwrap();

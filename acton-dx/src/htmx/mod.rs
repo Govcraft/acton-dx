@@ -19,7 +19,7 @@
 //! #[tokio::main]
 //! async fn main() -> anyhow::Result<()> {
 //!     // Launch the Acton runtime
-//!     let mut runtime = ActonApp::launch();
+//!     let mut runtime = ActonApp::launch_async().await;
 //!
 //!     // Initialize application state (spawns session manager agent)
 //!     let state = ActonHtmxState::new(&mut runtime).await?;

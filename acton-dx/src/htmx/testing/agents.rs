@@ -21,7 +21,7 @@
 //! }
 //! ```
 
-use acton_reactive::prelude::AgentRuntime;
+use acton_reactive::prelude::ActorRuntime;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
@@ -64,17 +64,27 @@ use tokio::sync::oneshot;
 /// }
 /// ```
 pub struct AgentTestRuntime {
-    runtime: AgentRuntime,
+    runtime: ActorRuntime,
 }
 
 impl AgentTestRuntime {
     /// Create a new test runtime.
     ///
     /// The runtime is automatically shut down when dropped.
-    #[must_use]
-    pub fn new() -> Self {
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use acton_htmx::testing::AgentTestRuntime;
+    ///
+    /// # async fn example() {
+    /// let mut runtime = AgentTestRuntime::new().await;
+    /// // Use the runtime...
+    /// # }
+    /// ```
+    pub async fn new() -> Self {
         Self {
-            runtime: acton_reactive::prelude::ActonApp::launch(),
+            runtime: acton_reactive::prelude::ActonApp::launch_async().await,
         }
     }
 
@@ -92,13 +102,13 @@ impl AgentTestRuntime {
     /// # }
     /// ```
     #[must_use]
-    pub fn runtime_mut(&mut self) -> &mut AgentRuntime {
+    pub fn runtime_mut(&mut self) -> &mut ActorRuntime {
         &mut self.runtime
     }
 
     /// Get a reference to the underlying runtime.
     #[must_use]
-    pub const fn runtime(&self) -> &AgentRuntime {
+    pub const fn runtime(&self) -> &ActorRuntime {
         &self.runtime
     }
 
@@ -116,11 +126,8 @@ impl AgentTestRuntime {
     }
 }
 
-impl Default for AgentTestRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// Note: Default is not implemented because new() is async.
+// Use AgentTestRuntime::new().await in async tests.
 
 impl Drop for AgentTestRuntime {
     fn drop(&mut self) {
@@ -221,14 +228,8 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_agent_test_runtime_creation() {
-        let runtime = AgentTestRuntime::new();
+        let runtime = AgentTestRuntime::new().await;
         drop(runtime); // Should not panic
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_agent_test_runtime_default() {
-        let runtime = AgentTestRuntime::default();
-        drop(runtime);
     }
 
     #[tokio::test(flavor = "multi_thread")]
@@ -251,21 +252,21 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_runtime_mut_returns_mutable_ref() {
-        let mut runtime = AgentTestRuntime::new();
+        let mut runtime = AgentTestRuntime::new().await;
         let _runtime_ref = runtime.runtime_mut();
         // If this compiles, we got a mutable reference
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_runtime_returns_ref() {
-        let runtime = AgentTestRuntime::new();
+        let runtime = AgentTestRuntime::new().await;
         let _runtime_ref = runtime.runtime();
         // If this compiles, we got a reference
     }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_explicit_shutdown() {
-        let runtime = AgentTestRuntime::new();
+        let runtime = AgentTestRuntime::new().await;
         let result = runtime.shutdown().await;
         assert!(result.is_ok());
     }

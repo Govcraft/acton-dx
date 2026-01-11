@@ -10,7 +10,7 @@ use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Redirect},
 };
-use acton_reactive::prelude::AgentHandleInterface;
+use acton_reactive::prelude::ActorHandleInterface;
 use serde::Deserialize;
 use sqlx::PgPool;
 

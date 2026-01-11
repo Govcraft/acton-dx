@@ -95,7 +95,7 @@ pub enum ScheduledJobResponse {
     ScheduledJobs(Vec<ScheduledJobEntry>),
 }
 
-/// Scheduled job management agent.
+/// Scheduled job management actor.
 ///
 /// Manages recurring, delayed, and cron-based job scheduling by:
 /// - Storing scheduled job definitions
@@ -106,8 +106,8 @@ pub enum ScheduledJobResponse {
 pub struct ScheduledJobAgent {
     /// All scheduled jobs indexed by ID.
     scheduled_jobs: Arc<RwLock<HashMap<JobId, ScheduledJobEntry>>>,
-    /// Handle to the job queue agent.
-    job_agent_handle: Option<AgentHandle>,
+    /// Handle to the job queue actor.
+    job_agent_handle: Option<ActorHandle>,
 }
 
 impl Default for ScheduledJobAgent {
@@ -126,28 +126,27 @@ impl ScheduledJobAgent {
         }
     }
 
-    /// Spawn the scheduled job agent.
+    /// Spawn the scheduled job actor.
     ///
     /// # Errors
     ///
-    /// Returns error if agent initialization fails.
+    /// Returns error if actor initialization fails.
     pub async fn spawn(
-        runtime: &mut AgentRuntime,
-        job_agent_handle: AgentHandle,
-    ) -> anyhow::Result<AgentHandle> {
-        let agent_config =
-            AgentConfig::new(Ern::with_root("scheduled_job_manager")?, None, None)?;
+        runtime: &mut ActorRuntime,
+        job_agent_handle: ActorHandle,
+    ) -> anyhow::Result<ActorHandle> {
+        let actor_config =
+            ActorConfig::new(Ern::with_root("scheduled_job_manager")?, None, None)?;
         let mut builder = runtime
-            .new_agent_with_config::<Self>(agent_config)
-            .await;
+            .new_actor_with_config::<Self>(actor_config);
 
-        // Set the job agent handle
+        // Set the job actor handle
         builder.model.job_agent_handle = Some(job_agent_handle);
 
         // Configure message handlers
-        builder.mutate_on::<ScheduledJobMessage>(|agent, envelope| {
-            let msg = envelope.message().clone();
-            let reply_envelope = envelope.reply_envelope();
+        builder.mutate_on::<ScheduledJobMessage>(|actor, context| {
+            let msg = context.message().clone();
+            let reply_envelope = context.reply_envelope();
 
             match msg {
                 ScheduledJobMessage::RegisterScheduledJob {
@@ -176,46 +175,46 @@ impl ScheduledJobAgent {
                         enabled: true,
                     };
 
-                    agent.model.scheduled_jobs.write().insert(id, entry);
+                    actor.model.scheduled_jobs.write().insert(id, entry);
                     info!("Registered scheduled job: {}", id);
 
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         let response = ScheduledJobResponse::JobRegistered { id };
                         let _: () = reply_envelope.send(response).await;
                     })
                 }
                 ScheduledJobMessage::UnregisterScheduledJob { id } => {
-                    agent.model.scheduled_jobs.write().remove(&id);
+                    actor.model.scheduled_jobs.write().remove(&id);
                     info!("Unregistered scheduled job: {}", id);
 
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         let response = ScheduledJobResponse::JobUnregistered;
                         let _: () = reply_envelope.send(response).await;
                     })
                 }
                 ScheduledJobMessage::SetScheduledJobEnabled { id, enabled } => {
-                    if let Some(entry) = agent.model.scheduled_jobs.write().get_mut(&id) {
+                    if let Some(entry) = actor.model.scheduled_jobs.write().get_mut(&id) {
                         entry.enabled = enabled;
                         info!("Set scheduled job {} enabled={}", id, enabled);
                     }
 
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         let response = ScheduledJobResponse::EnabledUpdated;
                         let _: () = reply_envelope.send(response).await;
                     })
                 }
                 ScheduledJobMessage::ProcessScheduledJobs => {
                     // Clone what we need for processing
-                    let scheduled_jobs = agent.model.scheduled_jobs.clone();
-                    let job_handle = agent.model.job_agent_handle.clone();
+                    let scheduled_jobs = actor.model.scheduled_jobs.clone();
+                    let job_handle = actor.model.job_agent_handle.clone();
 
                     // Process in async block
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         Self::process_scheduled_jobs_async(scheduled_jobs, job_handle).await;
                     })
                 }
                 ScheduledJobMessage::GetScheduledJobs => {
-                    let jobs = agent
+                    let jobs = actor
                         .model
                         .scheduled_jobs
                         .read()
@@ -223,7 +222,7 @@ impl ScheduledJobAgent {
                         .cloned()
                         .collect();
 
-                    AgentReply::from_async(async move {
+                    Reply::pending(async move {
                         let response = ScheduledJobResponse::ScheduledJobs(jobs);
                         let _: () = reply_envelope.send(response).await;
                     })
@@ -238,7 +237,7 @@ impl ScheduledJobAgent {
     #[allow(clippy::cognitive_complexity)]
     async fn process_scheduled_jobs_async(
         scheduled_jobs: Arc<RwLock<HashMap<JobId, ScheduledJobEntry>>>,
-        job_handle: Option<AgentHandle>,
+        job_handle: Option<ActorHandle>,
     ) {
         let now = Utc::now();
         let mut jobs_to_enqueue = Vec::new();
@@ -302,7 +301,7 @@ impl ScheduledJobAgent {
 /// # Errors
 ///
 /// Returns error if the scheduled job agent handle is invalid.
-pub async fn start_scheduler_loop(scheduler_handle: AgentHandle) -> Result<(), JobError> {
+pub async fn start_scheduler_loop(scheduler_handle: ActorHandle) -> Result<(), JobError> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
 
