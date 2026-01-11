@@ -641,7 +641,7 @@ use crate::{
 
 #[tokio::test]
 async fn test_list_{{ model_snake }}s() {
-    let state = AppState::test().await;
+    let state = AppState::test();
     let app = app_router(state);
 
     let response = app
@@ -659,7 +659,7 @@ async fn test_list_{{ model_snake }}s() {
 
 #[tokio::test]
 async fn test_create_{{ model_snake }}() {
-    let state = AppState::test().await;
+    let state = AppState::test();
     let app = app_router(state.clone());
 
     // Create test {{ model_snake }}
@@ -692,7 +692,7 @@ async fn test_create_{{ model_snake }}() {
 
 #[tokio::test]
 async fn test_show_{{ model_snake }}() {
-    let state = AppState::test().await;
+    let state = AppState::test();
 
     // Create test {{ model_snake }}
     let form = crate::forms::{{ model_snake }}::{{ model_name }}Form::new(
@@ -719,7 +719,7 @@ async fn test_show_{{ model_snake }}() {
 
 #[tokio::test]
 async fn test_update_{{ model_snake }}() {
-    let state = AppState::test().await;
+    let state = AppState::test();
 
     // Create test {{ model_snake }}
     let form = crate::forms::{{ model_snake }}::{{ model_name }}Form::new(
@@ -763,7 +763,7 @@ async fn test_update_{{ model_snake }}() {
 
 #[tokio::test]
 async fn test_delete_{{ model_snake }}() {
-    let state = AppState::test().await;
+    let state = AppState::test();
 
     // Create test {{ model_snake }}
     let form = crate::forms::{{ model_snake }}::{{ model_name }}Form::new(
@@ -797,7 +797,7 @@ async fn test_delete_{{ model_snake }}() {
 
 #[tokio::test]
 async fn test_validation_errors() {
-    let state = AppState::test().await;
+    let state = AppState::test();
     let app = app_router(state);
 
     // Attempt to create with invalid data

@@ -82,7 +82,7 @@ impl MicroservicesFileStorage {
 impl FileStorage for MicroservicesFileStorage {
     async fn store(&self, file: UploadedFile) -> StorageResult<StoredFile> {
         let result = {
-            let mut client = self.client.write().await;
+            let mut client = self.client.write();
             client
                 .upload(&file.filename, &file.content_type, file.data, HashMap::new())
                 .await
@@ -110,7 +110,7 @@ impl FileStorage for MicroservicesFileStorage {
 
     async fn retrieve(&self, id: &str) -> StorageResult<Vec<u8>> {
         let result = {
-            let mut client = self.client.write().await;
+            let mut client = self.client.write();
             client
                 .download(id)
                 .await
@@ -122,7 +122,7 @@ impl FileStorage for MicroservicesFileStorage {
 
     async fn delete(&self, id: &str) -> StorageResult<()> {
         let success = {
-            let mut client = self.client.write().await;
+            let mut client = self.client.write();
             client
                 .delete(id)
                 .await
@@ -137,7 +137,7 @@ impl FileStorage for MicroservicesFileStorage {
 
     async fn url(&self, id: &str) -> StorageResult<String> {
         let url = {
-            let mut client = self.client.write().await;
+            let mut client = self.client.write();
             client
                 .get_public_url(id)
                 .await
@@ -150,7 +150,7 @@ impl FileStorage for MicroservicesFileStorage {
     async fn exists(&self, id: &str) -> StorageResult<bool> {
         // Try to get metadata - if it succeeds, file exists
         let result = {
-            let mut client = self.client.write().await;
+            let mut client = self.client.write();
             client.get_metadata(id).await
         };
 
@@ -165,7 +165,7 @@ impl FileStorage for MicroservicesFileStorage {
 
     async fn get_metadata(&self, id: &str) -> StorageResult<StoredFile> {
         let info = {
-            let mut client = self.client.write().await;
+            let mut client = self.client.write();
             client
                 .get_metadata(id)
                 .await

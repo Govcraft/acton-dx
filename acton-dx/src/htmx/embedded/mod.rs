@@ -62,7 +62,7 @@ impl Default for EmbeddedServicesConfig {
         Self {
             base_port: 50051,
             host: "127.0.0.1".to_string(),
-            enabled_services,
+            enabled_services: enabled,
         }
     }
 }
@@ -322,7 +322,7 @@ impl EmbeddedServices {
             );
 
             // Wait for shutdown signal
-            let _ = shutdown_rx.recv().await;
+            let _ = shutdown_rx.recv();
 
             tracing::info!(
                 service = %service_name,
