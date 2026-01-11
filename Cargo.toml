@@ -55,8 +55,7 @@ tower-resilience = "0.3"
 governor = "0.10.2"
 
 # From acton-reactive - Actor runtime
-acton-reactive = "5"
-tokio = { version = "1", features = ["full"] }
+acton-reactive = "7"
 
 # HTMX-specific - Template engine and integration
 axum-htmx = { version = "0.8", features = ["auto-vary", "guards", "serde"] }
@@ -80,6 +79,7 @@ anyhow = "1"
 
 # Async runtime
 async-trait = "0.1"
+tokio = { version = "1", features = ["full"] }
 
 # HTTP
 http = "1"
