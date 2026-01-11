@@ -80,7 +80,7 @@ impl RedisPersistenceAgent {
     /// use acton_htmx::jobs::agent::redis_agent::RedisPersistenceAgent;
     ///
     /// # async fn example() -> anyhow::Result<()> {
-    /// let mut runtime = AgentRuntime::new().await?;
+    /// let mut runtime = ActorRuntime::new().await?;
     /// let handle = RedisPersistenceAgent::spawn(
     ///     "redis://localhost:6379",
     ///     &mut runtime
@@ -90,46 +90,46 @@ impl RedisPersistenceAgent {
     /// ```
     pub async fn spawn(
         redis_url: &str,
-        runtime: &mut AgentRuntime,
-    ) -> anyhow::Result<AgentHandle> {
+        runtime: &mut ActorRuntime,
+    ) -> anyhow::Result<ActorHandle> {
         // Create Redis connection
         let client = redis::Client::open(redis_url)?;
         let conn = client.get_multiplexed_async_connection().await?;
 
         debug!("Connected to Redis at {}", redis_url);
 
-        // Spawn agent using closure pattern
+        // Spawn actor using closure pattern
         runtime
-            .spawn_agent(|mut agent: ManagedAgent<Idle, Self>| {
+            .spawn_actor(|mut actor: ManagedActor<Idle, Self>| {
                 // Set model with Redis connection
-                agent.model = Self {
+                actor.model = Self {
                     redis_conn: Some(conn),
                     operations_count: Arc::new(AtomicUsize::new(0)),
                 };
 
                 Box::pin(async move {
-                    Self::configure_handlers(agent).await.expect("Failed to configure handlers")
+                    Self::configure_handlers(actor).await.expect("Failed to configure handlers")
                 })
             })
             .await
     }
 
-    /// Configure all message handlers for the persistence agent.
+    /// Configure all message handlers for the persistence actor.
     ///
     /// All handlers use `act_on` for concurrent execution since they only
-    /// perform external IO without modifying agent state.
+    /// perform external IO without modifying actor state.
     async fn configure_handlers(
-        mut builder: ManagedAgent<Idle, Self>,
-    ) -> anyhow::Result<AgentHandle> {
+        mut builder: ManagedActor<Idle, Self>,
+    ) -> anyhow::Result<ActorHandle> {
         builder
             // Persist job to Redis (fire-and-forget)
-            .act_on::<PersistJob>(|agent, envelope| {
-                let conn_opt = agent.model.redis_conn.clone();
-                let job = envelope.message().job.clone();
-                let ops_count = agent.model.operations_count.clone();
+            .act_on::<PersistJob>(|actor, context| {
+                let conn_opt = actor.model.redis_conn.clone();
+                let job = context.message().job.clone();
+                let ops_count = actor.model.operations_count.clone();
 
                 // Spawn as tokio task to satisfy Sync bound
-                Box::pin(async move {
+                Reply::pending(async move {
                     tokio::spawn(async move {
                         if let Some(mut conn) = conn_opt {
                             match persist_job_impl(&mut conn, &job).await {
@@ -147,13 +147,13 @@ impl RedisPersistenceAgent {
             })
 
             // Mark job as completed (fire-and-forget)
-            .act_on::<MarkJobCompleted>(|agent, envelope| {
-                let conn_opt = agent.model.redis_conn.clone();
-                let msg = envelope.message().clone();
-                let ops_count = agent.model.operations_count.clone();
+            .act_on::<MarkJobCompleted>(|actor, context| {
+                let conn_opt = actor.model.redis_conn.clone();
+                let msg = context.message().clone();
+                let ops_count = actor.model.operations_count.clone();
 
                 // Spawn as tokio task to satisfy Sync bound
-                Box::pin(async move {
+                Reply::pending(async move {
                     tokio::spawn(async move {
                         if let Some(mut conn) = conn_opt {
                             match mark_completed_impl(&mut conn, msg.id, msg.execution_time_ms).await {
@@ -171,13 +171,13 @@ impl RedisPersistenceAgent {
             })
 
             // Mark job as failed (fire-and-forget)
-            .act_on::<MarkJobFailed>(|agent, envelope| {
-                let conn_opt = agent.model.redis_conn.clone();
-                let msg = envelope.message().clone();
-                let ops_count = agent.model.operations_count.clone();
+            .act_on::<MarkJobFailed>(|actor, context| {
+                let conn_opt = actor.model.redis_conn.clone();
+                let msg = context.message().clone();
+                let ops_count = actor.model.operations_count.clone();
 
                 // Spawn as tokio task to satisfy Sync bound
-                Box::pin(async move {
+                Reply::pending(async move {
                     tokio::spawn(async move {
                         if let Some(mut conn) = conn_opt {
                             match mark_failed_impl(&mut conn, msg.id, &msg.error, msg.attempt).await {
@@ -195,13 +195,13 @@ impl RedisPersistenceAgent {
             })
 
             // Move job to dead letter queue (fire-and-forget)
-            .act_on::<MoveToDeadLetterQueue>(|agent, envelope| {
-                let conn_opt = agent.model.redis_conn.clone();
-                let msg = envelope.message().clone();
-                let ops_count = agent.model.operations_count.clone();
+            .act_on::<MoveToDeadLetterQueue>(|actor, context| {
+                let conn_opt = actor.model.redis_conn.clone();
+                let msg = context.message().clone();
+                let ops_count = actor.model.operations_count.clone();
 
                 // Spawn as tokio task to satisfy Sync bound
-                Box::pin(async move {
+                Reply::pending(async move {
                     tokio::spawn(async move {
                         if let Some(mut conn) = conn_opt {
                             match move_to_dlq_impl(&mut conn, msg.id, &msg.job, &msg.error).await {

@@ -56,16 +56,16 @@ pub fn is_htmx_request(headers: &HeaderMap) -> bool {
 /// ```rust,ignore
 /// use acton_htmx::middleware::middleware_constructors;
 /// use acton_htmx::state::ActonHtmxState;
-/// use acton_reactive::prelude::AgentHandle;
+/// use acton_reactive::prelude::ActorHandle;
 ///
 /// pub struct MyMiddleware {
-///     agent_handle: AgentHandle<MyAgent>,
+///     actor_handle: ActorHandle<MyAgent>,
 /// }
 ///
 /// middleware_constructors!(
 ///     MyMiddleware,        // Middleware type
-///     MyAgent,             // Agent type
-///     agent_handle,        // Field name for the handle
+///     MyAgent,             // Actor type
+///     actor_handle,        // Field name for the handle
 ///     MyConfig             // Config type
 /// );
 /// ```
@@ -75,7 +75,7 @@ pub fn is_htmx_request(headers: &HeaderMap) -> bool {
 /// impl MyMiddleware {
 ///     pub fn new(state: &ActonHtmxState) -> Self {
 ///         Self {
-///             agent_handle: state.my_agent().clone(),
+///             actor_handle: state.my_actor().clone(),
 ///         }
 ///     }
 ///
@@ -83,9 +83,9 @@ pub fn is_htmx_request(headers: &HeaderMap) -> bool {
 ///         Self::new(state)
 ///     }
 ///
-///     pub fn from_handle(handle: AgentHandle<MyAgent>) -> Self {
+///     pub fn from_handle(handle: ActorHandle<MyAgent>) -> Self {
 ///         Self {
-///             agent_handle: handle,
+///             actor_handle: handle,
 ///         }
 ///     }
 /// }
@@ -114,11 +114,11 @@ macro_rules! middleware_constructors {
                 Self::new(state)
             }
 
-            /// Create middleware directly from an agent handle
+            /// Create middleware directly from an actor handle
             ///
-            /// This is useful for testing or when you have a custom agent instance.
+            /// This is useful for testing or when you have a custom actor instance.
             #[must_use]
-            pub const fn from_handle(handle: acton_reactive::prelude::AgentHandle<$agent>) -> Self {
+            pub const fn from_handle(handle: acton_reactive::prelude::ActorHandle<$agent>) -> Self {
                 Self { $field: handle }
             }
         }

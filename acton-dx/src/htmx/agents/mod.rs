@@ -3,7 +3,7 @@
 //! This module contains actor-based components for background processing,
 //! session management, CSRF protection, and real-time features.
 
-use acton_reactive::prelude::{AgentConfig, Ern};
+use acton_reactive::prelude::{ActorConfig, Ern};
 
 pub mod csrf_manager;
 pub mod hot_reload;
@@ -40,16 +40,16 @@ pub use session_manager::{
     TakeFlashes,
 };
 
-/// Create a default agent configuration with the given name
+/// Create a default actor configuration with the given name
 ///
-/// This is a convenience function that creates an `AgentConfig` with:
+/// This is a convenience function that creates an `ActorConfig` with:
 /// - An ERN (Entity Resource Name) rooted at the given name
-/// - No parent agent (standalone)
-/// - No custom context
+/// - No parent actor (standalone)
+/// - No custom broker
 ///
 /// # Arguments
 ///
-/// * `name` - The unique identifier for this agent type (e.g., "csrf_manager", "session_manager")
+/// * `name` - The unique identifier for this actor type (e.g., "csrf_manager", "session_manager")
 ///
 /// # Errors
 ///
@@ -58,9 +58,9 @@ pub use session_manager::{
 /// # Example
 ///
 /// ```ignore
-/// let config = default_agent_config("my_agent")?;
-/// let builder = runtime.new_agent_with_config::<MyAgent>(config).await;
+/// let config = default_actor_config("my_actor")?;
+/// let builder = runtime.new_actor_with_config::<MyActor>(config);
 /// ```
-pub fn default_agent_config(name: &str) -> anyhow::Result<AgentConfig> {
-    AgentConfig::new(Ern::with_root(name)?, None, None)
+pub fn default_actor_config(name: &str) -> anyhow::Result<ActorConfig> {
+    ActorConfig::new(Ern::with_root(name)?, None, None)
 }

@@ -5,7 +5,7 @@
 use crate::htmx::agents::{CsrfToken, GetOrCreateToken};
 use crate::htmx::auth::session::SessionId;
 use crate::htmx::state::ActonHtmxState;
-use acton_reactive::prelude::AgentHandleInterface;
+use acton_reactive::prelude::ActorHandleInterface;
 use axum::{
     extract::{FromRef, FromRequestParts},
     http::{request::Parts, StatusCode},

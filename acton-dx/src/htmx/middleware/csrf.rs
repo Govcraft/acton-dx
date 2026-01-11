@@ -15,7 +15,7 @@
 use crate::htmx::agents::{CsrfToken, ValidateToken};
 use crate::htmx::auth::session::SessionId;
 use crate::htmx::state::ActonHtmxState;
-use acton_reactive::prelude::{AgentHandle, AgentHandleInterface};
+use acton_reactive::prelude::{ActorHandle, ActorHandleInterface};
 use axum::{
     body::Body,
     extract::Request,
@@ -85,14 +85,14 @@ impl CsrfConfig {
 #[derive(Clone)]
 pub struct CsrfLayer {
     config: CsrfConfig,
-    csrf_manager: AgentHandle,
+    csrf_manager: ActorHandle,
 }
 
 impl std::fmt::Debug for CsrfLayer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("CsrfLayer")
             .field("config", &self.config)
-            .field("csrf_manager", &"AgentHandle")
+            .field("csrf_manager", &"ActorHandle")
             .finish()
     }
 }
@@ -118,7 +118,7 @@ impl CsrfLayer {
 
     /// Create CSRF layer from an existing agent handle
     #[must_use]
-    pub fn from_handle(csrf_manager: AgentHandle) -> Self {
+    pub fn from_handle(csrf_manager: ActorHandle) -> Self {
         Self {
             config: CsrfConfig::default(),
             csrf_manager,
@@ -127,7 +127,7 @@ impl CsrfLayer {
 
     /// Create CSRF layer from handle with custom configuration
     #[must_use]
-    pub const fn from_handle_with_config(csrf_manager: AgentHandle, config: CsrfConfig) -> Self {
+    pub const fn from_handle_with_config(csrf_manager: ActorHandle, config: CsrfConfig) -> Self {
         Self {
             config,
             csrf_manager,
@@ -155,7 +155,7 @@ impl<S> Layer<S> for CsrfLayer {
 pub struct CsrfMiddleware<S> {
     inner: S,
     config: Arc<CsrfConfig>,
-    csrf_manager: AgentHandle,
+    csrf_manager: ActorHandle,
 }
 
 impl<S: std::fmt::Debug> std::fmt::Debug for CsrfMiddleware<S> {
@@ -163,7 +163,7 @@ impl<S: std::fmt::Debug> std::fmt::Debug for CsrfMiddleware<S> {
         f.debug_struct("CsrfMiddleware")
             .field("inner", &self.inner)
             .field("config", &self.config)
-            .field("csrf_manager", &"AgentHandle")
+            .field("csrf_manager", &"ActorHandle")
             .finish()
     }
 }

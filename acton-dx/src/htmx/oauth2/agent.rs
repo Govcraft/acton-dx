@@ -92,28 +92,28 @@ pub struct RemoveState {
 pub struct CleanupExpired;
 
 impl OAuth2Agent {
-    /// Spawn OAuth2 manager agent
+    /// Spawn OAuth2 manager actor
     ///
     /// # Errors
     ///
-    /// Returns error if agent configuration or spawning fails
-    pub async fn spawn(runtime: &mut AgentRuntime) -> anyhow::Result<AgentHandle> {
-        let config = AgentConfig::new(Ern::with_root("oauth2_manager")?, None, None)?;
+    /// Returns error if actor configuration or spawning fails
+    pub async fn spawn(runtime: &mut ActorRuntime) -> anyhow::Result<ActorHandle> {
+        let config = ActorConfig::new(Ern::with_root("oauth2_manager")?, None, None)?;
 
-        let mut builder = runtime.new_agent_with_config::<Self>(config).await;
+        let mut builder = runtime.new_actor_with_config::<Self>(config);
 
         // Configure handlers using mutate_on (all operations mutate state)
         builder
-            .mutate_on::<GenerateState>(|agent, envelope| {
-                let response_tx = envelope.message().response_tx.clone();
-                let provider = envelope.message().provider;
+            .mutate_on::<GenerateState>(|actor, context| {
+                let response_tx = context.message().response_tx.clone();
+                let provider = context.message().provider;
 
                 // Clean up expired tokens periodically
-                agent.model.cleanup_expired();
+                actor.model.cleanup_expired();
 
                 // Generate and store state token
                 let state = OAuthState::generate(provider);
-                agent.model.states.insert(state.token.clone(), state.clone());
+                actor.model.states.insert(state.token.clone(), state.clone());
 
                 tracing::debug!(
                     provider = ?provider,
@@ -121,22 +121,22 @@ impl OAuth2Agent {
                     "Generated OAuth2 state token"
                 );
 
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     let mut guard = response_tx.lock().await;
                     if let Some(tx) = guard.take() {
                         let _ = tx.send(state);
                     }
                 })
             })
-            .mutate_on::<ValidateState>(|agent, envelope| {
-                let token = envelope.message().token.clone();
-                let response_tx = envelope.message().response_tx.clone();
+            .mutate_on::<ValidateState>(|actor, context| {
+                let token = context.message().token.clone();
+                let response_tx = context.message().response_tx.clone();
 
                 // Clean up expired tokens
-                agent.model.cleanup_expired();
+                actor.model.cleanup_expired();
 
                 // Validate state token
-                let state = agent.model.states.get(&token).and_then(|state| {
+                let state = actor.model.states.get(&token).and_then(|state| {
                     if state.is_expired() {
                         tracing::warn!(token = %token, "OAuth2 state token expired");
                         None
@@ -150,46 +150,46 @@ impl OAuth2Agent {
                     }
                 });
 
-                AgentReply::from_async(async move {
+                Reply::pending(async move {
                     let mut guard = response_tx.lock().await;
                     if let Some(tx) = guard.take() {
                         let _ = tx.send(state);
                     }
                 })
             })
-            .mutate_on::<RemoveState>(|agent, envelope| {
-                let token = envelope.message().token.clone();
+            .mutate_on::<RemoveState>(|actor, context| {
+                let token = context.message().token.clone();
 
-                if agent.model.states.remove(&token).is_some() {
+                if actor.model.states.remove(&token).is_some() {
                     tracing::debug!(token = %token, "Removed OAuth2 state token");
                 }
 
-                AgentReply::immediate()
+                Reply::ready()
             })
-            .mutate_on::<CleanupExpired>(|agent, _envelope| {
-                let before = agent.model.states.len();
-                agent.model.cleanup_expired();
-                let removed = before - agent.model.states.len();
+            .mutate_on::<CleanupExpired>(|actor, _context| {
+                let before = actor.model.states.len();
+                actor.model.cleanup_expired();
+                let removed = before - actor.model.states.len();
 
                 if removed > 0 {
                     tracing::debug!(
                         removed = removed,
-                        remaining = agent.model.states.len(),
+                        remaining = actor.model.states.len(),
                         "Cleaned up expired OAuth2 state tokens"
                     );
                 }
 
-                AgentReply::immediate()
+                Reply::ready()
             })
-            .after_start(|_agent| async {
-                tracing::info!("OAuth2 manager agent started");
+            .after_start(|_actor| async {
+                tracing::info!("OAuth2 manager actor started");
             })
-            .after_stop(|agent| {
-                let token_count = agent.model.states.len();
+            .after_stop(|actor| {
+                let token_count = actor.model.states.len();
                 async move {
                     tracing::info!(
                         tokens = token_count,
-                        "OAuth2 manager agent stopped"
+                        "OAuth2 manager actor stopped"
                     );
                 }
             });

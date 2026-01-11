@@ -22,7 +22,7 @@
 //!     .route("/admin/jobs/stats", get(job_admin::job_stats));
 //! ```
 
-use acton_reactive::prelude::AgentHandleInterface;
+use acton_reactive::prelude::ActorHandleInterface;
 use axum::{
     extract::{Path, State},
     http::StatusCode,
