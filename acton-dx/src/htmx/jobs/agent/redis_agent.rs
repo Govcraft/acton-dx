@@ -11,7 +11,7 @@ use super::persistence::{
 };
 use super::queue::QueuedJob;
 use crate::htmx::jobs::{JobId, JobStatus};
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use redis::AsyncCommands;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -226,7 +226,7 @@ impl RedisPersistenceAgent {
 async fn persist_job_impl(
     redis: &mut redis::aio::MultiplexedConnection,
     job: &QueuedJob,
-) -> Result<(), redis::RedisError> {
+) -> std::result::Result<(), redis::RedisError> {
     let key = format!("job:{}", job.id);
     let json = serde_json::to_string(job).map_err(|e| {
         redis::RedisError::from((
@@ -250,7 +250,7 @@ async fn mark_completed_impl(
     redis: &mut redis::aio::MultiplexedConnection,
     id: JobId,
     execution_time_ms: u64,
-) -> Result<(), redis::RedisError> {
+) -> std::result::Result<(), redis::RedisError> {
     let key = format!("job:{id}");
 
     // Update status
@@ -281,7 +281,7 @@ async fn mark_failed_impl(
     id: JobId,
     error: &str,
     attempt: u32,
-) -> Result<(), redis::RedisError> {
+) -> std::result::Result<(), redis::RedisError> {
     let key = format!("job:{id}");
 
     // Update status
@@ -310,7 +310,7 @@ async fn move_to_dlq_impl(
     id: JobId,
     job: &QueuedJob,
     error: &str,
-) -> Result<(), redis::RedisError> {
+) -> std::result::Result<(), redis::RedisError> {
     let dlq_key = format!("dlq:{id}");
     let json = serde_json::to_string(job).map_err(|e| {
         redis::RedisError::from((

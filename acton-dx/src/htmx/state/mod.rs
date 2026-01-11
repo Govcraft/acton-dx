@@ -4,21 +4,49 @@
 //! HTMX-specific components.
 
 use crate::htmx::agents::{CsrfManagerAgent, SessionManagerAgent};
+use crate::htmx::config::ActonHtmxConfig;
 use crate::htmx::jobs::JobAgent;
 use crate::htmx::oauth2::OAuth2Agent;
 use crate::htmx::template::FrameworkTemplates;
-use crate::htmx::{config::ActonHtmxConfig, observability::ObservabilityConfig};
-use acton_reactive::prelude::{ActorHandle, ActorRuntime};
+
+// Import from acton-service prelude (provides acton_reactive, tokio, anyhow, etc.)
+use acton_service::prelude::{ActorHandle, ActorRuntime, anyhow, tokio};
+
 use std::sync::Arc;
 
+// Database pools - sqlx is a direct dependency when postgres feature is enabled
 #[cfg(feature = "postgres")]
 use sqlx::PgPool;
 
 #[cfg(feature = "sqlite")]
 use sqlx::SqlitePool;
 
+// Redis pool - deadpool-redis is a direct dependency when redis feature is enabled
 #[cfg(feature = "redis")]
 use deadpool_redis::Pool as RedisPool;
+
+/// Placeholder observability configuration until we fully integrate with acton-service.
+///
+/// This will be replaced by acton-service's observability system.
+#[derive(Debug, Clone, Default)]
+pub struct ObservabilityConfig {
+    /// Service name for telemetry identification
+    pub service_name: String,
+}
+
+impl ObservabilityConfig {
+    /// Create a new observability configuration.
+    ///
+    /// # Arguments
+    ///
+    /// * `service_name` - The name of the service for telemetry identification
+    #[must_use]
+    pub fn new(service_name: &str) -> Self {
+        Self {
+            service_name: service_name.to_string(),
+        }
+    }
+}
 
 #[cfg(feature = "microservices")]
 use crate::htmx::clients::{ServiceRegistry, ServicesConfig};
@@ -626,7 +654,7 @@ impl ActonHtmxState {
     /// }
     /// ```
     pub async fn get_job_metrics(&self) -> Result<super::jobs::agent::JobMetrics, anyhow::Error> {
-        use acton_reactive::prelude::ActorHandleInterface;
+        use acton_service::prelude::ActorHandleInterface;
         use super::jobs::agent::GetMetricsRequest;
         use std::time::Duration;
 
@@ -673,7 +701,7 @@ impl ActonHtmxState {
         &self,
         id: super::jobs::JobId,
     ) -> Result<Option<super::jobs::JobStatus>, anyhow::Error> {
-        use acton_reactive::prelude::ActorHandleInterface;
+        use acton_service::prelude::ActorHandleInterface;
         use super::jobs::agent::GetJobStatusRequest;
         use std::time::Duration;
 
@@ -688,7 +716,7 @@ impl ActonHtmxState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use acton_reactive::prelude::ActonApp;
+    use acton_service::prelude::ActonApp;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn test_new_state() {

@@ -3,7 +3,7 @@
 //! This module provides an acton-reactive agent for managing OAuth2 state tokens
 //! and preventing CSRF attacks during the OAuth2 flow.
 
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::SystemTime;

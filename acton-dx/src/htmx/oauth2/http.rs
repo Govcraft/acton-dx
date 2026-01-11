@@ -4,6 +4,8 @@
 //! providers use for token exchange requests. By centralizing this logic, we ensure
 //! consistent behavior, simplify testing, and reduce code duplication.
 
+use acton_service::prelude::Response;
+
 /// Async HTTP client for OAuth2 requests
 ///
 /// This function is used by all OAuth2 providers to perform HTTP requests during
@@ -53,7 +55,7 @@ pub async fn async_http_client(
     let headers = response.headers().to_owned();
     let body = response.bytes().await?.to_vec();
 
-    let mut builder = http::Response::builder().status(status_code);
+    let mut builder = Response::builder().status(status_code);
     for (name, value) in &headers {
         builder = builder.header(name, value);
     }

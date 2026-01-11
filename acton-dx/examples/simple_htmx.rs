@@ -12,7 +12,7 @@
 //! ```
 
 use acton_dx::{observability, state::ActonHtmxState};
-use acton_reactive::prelude::ActonApp;
+use acton_service::prelude::ActonApp;
 use axum::{
     response::Html,
     routing::{get, post},

@@ -21,7 +21,7 @@
 //! }
 //! ```
 
-use acton_reactive::prelude::ActorRuntime;
+use acton_service::prelude::ActorRuntime;
 use std::time::Duration;
 use tokio::sync::oneshot;
 
@@ -84,7 +84,7 @@ impl AgentTestRuntime {
     /// ```
     pub async fn new() -> Self {
         Self {
-            runtime: acton_reactive::prelude::ActonApp::launch_async().await,
+            runtime: acton_service::prelude::ActonApp::launch_async().await,
         }
     }
 

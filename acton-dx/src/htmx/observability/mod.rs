@@ -1,7 +1,21 @@
 //! Observability (logging, tracing, metrics)
 //!
-//! Provides structured logging, distributed tracing, and metrics collection
-//! via OpenTelemetry integration.
+//! Provides structured logging for HTMX applications with environment-based
+//! configuration. Uses pretty formatting in development and JSON in production.
+//!
+//! # Example
+//!
+//! ```rust,no_run
+//! use acton_dx::observability;
+//!
+//! # fn main() -> anyhow::Result<()> {
+//! observability::init()?;
+//! tracing::info!("Application started");
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! For metrics collection, see the [`metrics`] submodule.
 
 pub mod metrics;
 
@@ -11,19 +25,17 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 ///
 /// Sets up:
 /// - Structured logging with JSON formatting (production) or pretty formatting (dev)
-/// - Environment-based log level filtering
-/// - Request ID correlation
+/// - Environment-based log level filtering via `RUST_LOG`
 ///
 /// # Errors
 ///
-/// Returns an error if:
-/// - The tracing subscriber global default cannot be set (already initialized)
-/// - Environment filter parsing fails for invalid `RUST_LOG` values
+/// Returns an error if the tracing subscriber global default cannot be set
+/// (typically because it was already initialized).
 ///
 /// # Example
 ///
 /// ```rust,no_run
-/// use acton_htmx::observability;
+/// use acton_dx::observability;
 ///
 /// # fn main() -> anyhow::Result<()> {
 /// observability::init()?;
@@ -34,7 +46,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 pub fn init() -> anyhow::Result<()> {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| {
         if cfg!(debug_assertions) {
-            EnvFilter::new("debug,acton_htmx=trace")
+            EnvFilter::new("debug,acton_dx=trace")
         } else {
             EnvFilter::new("info")
         }
@@ -61,73 +73,8 @@ pub fn init() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Observability configuration
-#[derive(Debug, Clone)]
-pub struct ObservabilityConfig {
-    /// Service name for tracing
-    pub service_name: String,
-
-    /// Enable OpenTelemetry metrics
-    pub metrics_enabled: bool,
-
-    /// Enable distributed tracing
-    pub tracing_enabled: bool,
-}
-
-impl Default for ObservabilityConfig {
-    fn default() -> Self {
-        Self {
-            service_name: "acton-dx".to_string(),
-            metrics_enabled: false,
-            tracing_enabled: false,
-        }
-    }
-}
-
-impl ObservabilityConfig {
-    /// Create new observability config
-    pub fn new(service_name: impl Into<String>) -> Self {
-        Self {
-            service_name: service_name.into(),
-            ..Default::default()
-        }
-    }
-
-    /// Enable metrics collection
-    #[must_use]
-    pub const fn with_metrics(mut self) -> Self {
-        self.metrics_enabled = true;
-        self
-    }
-
-    /// Enable distributed tracing
-    #[must_use]
-    pub const fn with_tracing(mut self) -> Self {
-        self.tracing_enabled = true;
-        self
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn test_default_config() {
-        let config = ObservabilityConfig::default();
-        assert_eq!(config.service_name, "acton-dx");
-        assert!(!config.metrics_enabled);
-        assert!(!config.tracing_enabled);
-    }
-
-    #[test]
-    fn test_builder() {
-        let config = ObservabilityConfig::new("my-app")
-            .with_metrics()
-            .with_tracing();
-
-        assert_eq!(config.service_name, "my-app");
-        assert!(config.metrics_enabled);
-        assert!(config.tracing_enabled);
-    }
+    // Note: init() can only be called once per process, so we don't test it directly.
+    // The functionality is verified through integration tests.
 }

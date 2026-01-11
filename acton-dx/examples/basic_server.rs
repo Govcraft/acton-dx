@@ -10,7 +10,7 @@
 //! Run with: `cargo run --example basic_server`
 
 use acton_dx::{observability, prelude::*};
-use acton_reactive::prelude::ActonApp;
+use acton_service::prelude::ActonApp;
 use axum::{extract::State, routing::get, Router};
 
 #[tokio::main]

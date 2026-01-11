@@ -12,7 +12,7 @@
 
 use crate::htmx::agents::default_actor_config;
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 use tokio::sync::oneshot;

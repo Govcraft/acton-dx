@@ -25,42 +25,32 @@ path = "src/bin/main.rs"
 required-features = ["cli"]
 
 [dependencies]
-# Core web framework (htmx feature)
-axum = { workspace = true, features = ["multipart"], optional = true }
+# Core framework - provides axum, tokio, serde, tracing, chrono, uuid, thiserror, anyhow,
+# async-trait, http, acton-reactive, sqlx, redis, figment, opentelemetry, etc.
+acton-service = { workspace = true, optional = true }
+
+# Tower middleware for custom layers
 tower = { workspace = true, optional = true }
 tower-http = { workspace = true, optional = true }
-sqlx = { workspace = true, optional = true }
-redis = { workspace = true, optional = true }
-deadpool-redis = { workspace = true, optional = true }
-figment = { workspace = true, optional = true }
-tracing = { workspace = true, optional = true }
-tracing-subscriber = { workspace = true, optional = true }
-opentelemetry = { workspace = true, optional = true }
-opentelemetry-otlp = { workspace = true, optional = true }
-tower-resilience = { workspace = true, optional = true }
-governor = { workspace = true, optional = true }
-acton-reactive = { workspace = true, optional = true }
-tokio = { workspace = true }
+
+# HTMX-specific - not provided by acton-service
 axum-htmx = { workspace = true, optional = true }
 askama = { workspace = true, optional = true }
-validator = { workspace = true, features = ["derive"], optional = true }
+validator = { workspace = true, optional = true }
+
+# Security & crypto - HTMX-specific
 argon2 = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
-uuid = { workspace = true, optional = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
+
+# Utilities
 toml = { workspace = true, optional = true }
-thiserror = { workspace = true, optional = true }
-anyhow = { workspace = true }
-async-trait = { workspace = true, optional = true }
-http = { workspace = true, optional = true }
 hyper = { workspace = true, optional = true }
-chrono = { workspace = true }
+time = { workspace = true, optional = true }
 once_cell = { workspace = true, optional = true }
 parking_lot = { workspace = true, optional = true }
 
-# HTMX crate-specific (htmx feature)
+# HTMX crate-specific dependencies
 base64 = { version = "0.22.1", optional = true }
 cron = { version = "0.15.0", optional = true }
 multer = { version = "3.1.0", features = ["tokio-io"], optional = true }
@@ -77,7 +67,6 @@ aws-config = { version = "1.8.11", optional = true }
 oauth2 = { version = "5.0.0", optional = true }
 openidconnect = { version = "4.0.1", optional = true }
 hex = { version = "0.4.3", optional = true }
-time = { workspace = true, features = ["macros"], optional = true }
 reqwest = { version = "0.12.24", features = ["json"], optional = true }
 cedar-policy = { version = "4.3", optional = true }
 regex = { version = "1.12.2", optional = true }
@@ -88,7 +77,7 @@ minijinja = { version = "2", features = ["loader"], optional = true }
 notify = { version = "7", optional = true }
 phf = { version = "0.11", features = ["macros"], optional = true }
 
-# CLI dependencies (cli feature)
+# CLI dependencies
 clap = { workspace = true, optional = true }
 console = { workspace = true, optional = true }
 indicatif = { workspace = true, optional = true }
@@ -101,11 +90,24 @@ similar = { version = "2", optional = true }
 acton-dx-proto = { version = "0.1.0", path = "../acton-dx-proto", optional = true }
 tonic = { workspace = true, optional = true }
 tokio-stream = { version = "0.1.17", optional = true }
+serde = { workspace = true, features = ["derive"] }
+chrono = { version = "0.4.42", features = ["serde"] }
+async-trait = "0.1.89"
+thiserror = "2.0.17"
+anyhow = "1.0.100"
+uuid = { version = "1.19.0", features = ["v4"] }
+tracing.workspace = true
+sqlx = { version = "0.8.6", features = ["chrono", "postgres", "runtime-tokio"], optional = true }
+deadpool-redis = { version = "0.22.0", optional = true }
+tokio = { version = "1.49.0", features = ["full"], optional = true }
+serde_json = { version = "1.0.149", optional = true }
+redis = { version = "0.32.7", features = ["tokio-comp", "connection-manager"], optional = true }
+axum = { version = "0.8.8", features = ["macros", "multipart"], optional = true }
+tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt"], optional = true }
 
 [dev-dependencies]
 proptest.workspace = true
-tokio = { workspace = true, features = ["test-util"] }
-anyhow.workspace = true
+acton-service = { workspace = true }
 tempfile = "3.23.0"
 axum-test = "18.3"
 mockall = "0.13"
@@ -114,30 +116,23 @@ criterion = { version = "0.7.0", features = ["async_tokio", "html_reports"] }
 [features]
 default = ["htmx", "cli", "postgres", "redis", "cedar"]
 
-# HTMX web framework
+# HTMX web framework - uses acton-service as foundation
 htmx = [
+    "dep:acton-service",
+    "dep:tokio",
     "dep:axum",
+    "dep:serde_json",
     "dep:tower",
     "dep:tower-http",
-    "dep:sqlx",
-    "dep:figment",
-    "dep:tracing",
-    "dep:tracing-subscriber",
-    "dep:tower-resilience",
-    "dep:governor",
-    "dep:acton-reactive",
     "dep:axum-htmx",
     "dep:askama",
     "dep:validator",
     "dep:argon2",
     "dep:rand",
     "dep:sha2",
-    "dep:uuid",
     "dep:toml",
-    "dep:thiserror",
-    "dep:async-trait",
-    "dep:http",
     "dep:hyper",
+    "dep:time",
     "dep:once_cell",
     "dep:parking_lot",
     "dep:base64",
@@ -154,7 +149,6 @@ htmx = [
     "dep:oauth2",
     "dep:openidconnect",
     "dep:hex",
-    "dep:time",
     "dep:reqwest",
     "dep:regex",
     "dep:dirs",
@@ -162,6 +156,7 @@ htmx = [
     "dep:minijinja",
     "dep:notify",
     "dep:phf",
+    "dep:tracing-subscriber",
 ]
 
 # CLI tool
@@ -177,21 +172,21 @@ cli = [
     "dep:similar",
     "dep:minijinja",
     "dep:dirs",
-
 ]
 
-# Database backends (require htmx)
-postgres = ["htmx", "sqlx/postgres"]
-sqlite = ["htmx", "sqlx/sqlite"]
-mysql = ["htmx", "sqlx/mysql"]
+# Database backends - uses acton-service database feature
+postgres = ["htmx", "acton-service/database", "dep:sqlx"]
+sqlite = ["htmx"]
+mysql = ["htmx"]
 
-# Optional htmx features
-redis = ["htmx", "dep:redis", "dep:deadpool-redis"]
+# Optional features
+redis = ["htmx", "acton-service/cache", "dep:deadpool-redis", "dep:redis"]
 cedar = ["htmx", "dep:cedar-policy"]
-otel-metrics = ["htmx", "dep:opentelemetry", "dep:opentelemetry-otlp"]
+otel-metrics = ["htmx", "acton-service/otel-metrics"]
 aws-ses = ["htmx", "dep:aws-sdk-sesv2", "dep:aws-config"]
 clamav = ["htmx", "dep:clamav-client"]
 microservices = ["htmx", "dep:acton-dx-proto", "dep:tonic", "dep:tokio-stream"]
+tracing-subscriber = ["dep:tracing-subscriber"]
 
 [[bench]]
 name = "agents_benchmark"

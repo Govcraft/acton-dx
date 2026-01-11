@@ -7,7 +7,7 @@
 use crate::htmx::agents::{LoadSession, SaveSession};
 use crate::htmx::auth::session::{SessionData, SessionId};
 use crate::htmx::state::ActonHtmxState;
-use acton_reactive::prelude::{ActorHandle, ActorHandleInterface};
+use acton_service::prelude::{ActorHandle, ActorHandleInterface};
 use axum::{
     body::Body,
     extract::Request,

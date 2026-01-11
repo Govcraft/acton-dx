@@ -168,23 +168,13 @@ pub mod prelude {
         handle_oauth_callback, initiate_oauth, unlink_oauth_account, OAuthAccount,
     };
 
-    // Re-export key dependencies for framework users
-    // These allow users to avoid adding these crates to their Cargo.toml
-    pub use acton_reactive;
-    pub use anyhow;
+    // Re-export acton-service prelude - provides axum, tokio, serde, tracing, chrono, uuid,
+    // thiserror, anyhow, async-trait, http, acton-reactive, futures, sqlx, redis, etc.
+    pub use acton_service::prelude::*;
+
+    // Re-export HTMX-specific crates not provided by acton-service
     pub use askama;
-    pub use axum;
-    pub use serde;
-    pub use serde_json;
-    pub use sqlx;
-    pub use thiserror;
-    pub use tokio;
     pub use tower;
     pub use tower_http;
-    pub use tracing;
-    pub use tracing_subscriber;
     pub use validator;
-
-    // Convenience for JSON responses
-    pub use serde_json::json;
 }

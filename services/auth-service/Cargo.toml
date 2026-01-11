@@ -14,25 +14,20 @@ name = "auth-service"
 path = "src/main.rs"
 
 [dependencies]
+# Core framework - provides tokio, serde, tracing, chrono, uuid, thiserror, anyhow, acton-reactive
+acton-service = { workspace = true }
 acton-dx-proto = { path = "../../acton-dx-proto" }
-acton-reactive = { workspace = true }
-tokio = { workspace = true }
-tonic = "0.13"
-prost = "0.13"
-serde = { workspace = true }
-serde_json = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
+
+# gRPC
+tonic = { workspace = true }
+prost = { workspace = true }
+
+# Auth-specific
 argon2 = { workspace = true, features = ["std"] }
 rand = { workspace = true }
-chrono = { workspace = true }
-uuid = { workspace = true }
 dashmap = "6"
 base64 = "0.22"
 subtle = "2.6"
-figment = { workspace = true }
-thiserror = { workspace = true }
-anyhow.workspace = true
 
 [dev-dependencies]
 proptest = { workspace = true }

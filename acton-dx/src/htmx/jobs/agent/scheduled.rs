@@ -2,7 +2,7 @@
 
 use super::messages::EnqueueJob;
 use crate::htmx::jobs::{JobError, JobId, JobSchedule};
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
@@ -301,7 +301,7 @@ impl ScheduledJobAgent {
 /// # Errors
 ///
 /// Returns error if the scheduled job agent handle is invalid.
-pub async fn start_scheduler_loop(scheduler_handle: ActorHandle) -> Result<(), JobError> {
+pub async fn start_scheduler_loop(scheduler_handle: ActorHandle) -> std::result::Result<(), JobError> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(Duration::from_secs(60));
 

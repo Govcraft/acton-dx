@@ -3,7 +3,7 @@
 //! This module contains actor-based components for background processing,
 //! session management, CSRF protection, and real-time features.
 
-use acton_reactive::prelude::{ActorConfig, Ern};
+use acton_service::prelude::{ActorConfig, Ern};
 
 pub mod csrf_manager;
 pub mod hot_reload;

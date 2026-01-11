@@ -19,7 +19,7 @@ pub use redis_agent::RedisPersistenceAgent;
 pub use scheduled::{ScheduledJobAgent, ScheduledJobEntry, ScheduledJobMessage, ScheduledJobResponse, start_scheduler_loop};
 
 use super::{JobContext, JobId, JobStatus};
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use chrono::Utc;
 use parking_lot::RwLock;
 use std::collections::HashMap;

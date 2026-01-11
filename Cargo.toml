@@ -39,54 +39,37 @@ keywords = ["web", "framework", "htmx", "axum", "hypermedia"]
 categories = ["web-programming::http-server"]
 
 [workspace.dependencies]
-# From acton-service - Core web framework
-axum = "0.8"
-tower = "0.5"
-tower-http = { version = "0.6", features = ["compression-full", "cors", "trace", "timeout", "limit"] }
-sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "sqlite", "chrono", "uuid", "json"] }
-redis = "0.32"
-deadpool-redis = "0.22"
-figment = { version = "0.10", features = ["toml", "env", "json"] }
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-opentelemetry = "0.31"
-opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic"] }
-tower-resilience = "0.3"
-governor = "0.10.2"
+# Core framework - provides AppState, Config, ServiceBuilder, health, observability, agents, pools
+# Re-exports tokio and anyhow as full crates, plus common types from serde, tracing, chrono, uuid
+acton-service = { version = "0.9", features = ["http", "database", "cache", "observability", "resilience", "governor"] }
 
-# From acton-reactive - Actor runtime
-acton-reactive = "7"
+# These crates are used by acton-service but NOT fully re-exported in its prelude
+# (prelude only exports specific types, not full crate access)
+# Cargo deduplicates these with acton-service's own dependencies
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+
+# Tower middleware (acton-service uses internally but we need for custom middleware)
+tower = "0.5"
+tower-http = { version = "0.6.8", features = ["compression-full", "cors", "trace", "timeout", "limit"] }
 
 # HTMX-specific - Template engine and integration
 axum-htmx = { version = "0.8", features = ["auto-vary", "guards", "serde"] }
 askama = "0.14"
 validator = { version = "0.20", features = ["derive"] }
 
-# Security & crypto
+# Security & crypto (HTMX-specific, not in acton-service)
 argon2 = { version = "0.5", features = ["std", "rand"] }
 rand = "0.9"
 sha2 = "0.10"
-uuid = { version = "1", features = ["v4", "serde"] }
 
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+# Serialization (toml for config files)
 toml = "0.9"
 
-# Error handling
-thiserror = "2"
-anyhow = "1"
-
-# Async runtime
-async-trait = "0.1"
-tokio = { version = "1", features = ["full"] }
-
-# HTTP
-http = "1"
+# HTTP (hyper for low-level HTTP if needed)
 hyper = "1"
 
-# Time
-chrono = { version = "0.4", features = ["serde"] }
+# Time (time crate for cookie expiration, etc.)
 time = "0.3"
 
 # Utilities
@@ -96,11 +79,9 @@ parking_lot = "0.12"
 # Testing
 proptest = "1"
 
-# gRPC / Protocol Buffers
+# gRPC / Protocol Buffers (for microservices)
 prost = "0.13"
-prost-types = "0.13"
 tonic = "0.13"
-tonic-build = "0.13"
 
 # CLI
 clap = { version = "4", features = ["derive", "cargo"] }

@@ -7,7 +7,7 @@ use axum_htmx::{
     HxLocation, HxPushUrl, HxRedirect, HxRefresh, HxReplaceUrl, HxReselect, HxResponseTrigger,
     HxReswap, HxRetarget, LocationOptions, SwapOption, TriggerMode,
 };
-use http::StatusCode;
+use axum::http::StatusCode;
 use serde_json::json;
 use tower::ServiceExt;
 
@@ -103,7 +103,7 @@ async fn test_hx_redirect_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/redirect")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -121,7 +121,7 @@ async fn test_hx_push_url_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/push-url")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -144,7 +144,7 @@ async fn test_hx_replace_url_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/replace-url")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -165,7 +165,7 @@ async fn test_hx_refresh_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/refresh")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -183,7 +183,7 @@ async fn test_hx_trigger_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/trigger")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -207,7 +207,7 @@ async fn test_hx_trigger_after_settle_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/trigger-after-settle")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -229,7 +229,7 @@ async fn test_hx_trigger_after_swap_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/trigger-after-swap")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -250,7 +250,7 @@ async fn test_hx_reswap_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/reswap")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -268,7 +268,7 @@ async fn test_hx_retarget_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/retarget")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -289,7 +289,7 @@ async fn test_hx_reselect_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/reselect")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -311,7 +311,7 @@ async fn test_hx_location_header() {
     let response = app
         .clone()
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/location")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -332,7 +332,7 @@ async fn test_hx_location_with_context() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/location-with-options")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -367,7 +367,7 @@ async fn test_multiple_response_headers() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/multi")
                 .body(axum::body::Body::empty())
                 .unwrap(),

@@ -16,7 +16,7 @@
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
 use crate::htmx::agents::default_actor_config;
 use crate::htmx::auth::session::SessionId;
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;

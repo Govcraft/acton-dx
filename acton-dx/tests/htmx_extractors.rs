@@ -7,7 +7,7 @@ use axum::{
     Router,
 };
 use axum_htmx::{HxBoosted, HxCurrentUrl, HxHistoryRestoreRequest, HxPrompt, HxRequest, HxTarget};
-use http::{Method, StatusCode};
+use axum::http::{Method, StatusCode};
 use tower::ServiceExt;
 
 /// Helper to create a test app
@@ -60,7 +60,7 @@ async fn test_hx_request_with_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-request")
                 .header("HX-Request", "true")
                 .body(axum::body::Body::empty())
@@ -85,7 +85,7 @@ async fn test_hx_request_without_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-request")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -109,7 +109,7 @@ async fn test_hx_target_with_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-target")
                 .header("HX-Target", "#my-div")
                 .body(axum::body::Body::empty())
@@ -134,7 +134,7 @@ async fn test_hx_target_without_header() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-target")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -160,7 +160,7 @@ async fn test_hx_boosted() {
     let response = app
         .clone()
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-boosted")
                 .header("HX-Boosted", "true")
                 .body(axum::body::Body::empty())
@@ -177,7 +177,7 @@ async fn test_hx_boosted() {
     // Without header
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-boosted")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -197,7 +197,7 @@ async fn test_hx_current_url() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-current-url")
                 .header("HX-Current-URL", "https://example.com/page")
                 .body(axum::body::Body::empty())
@@ -222,7 +222,7 @@ async fn test_hx_history_restore() {
     let response = app
         .clone()
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-history-restore")
                 .header("HX-History-Restore-Request", "true")
                 .body(axum::body::Body::empty())
@@ -239,7 +239,7 @@ async fn test_hx_history_restore() {
     // Without header
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-history-restore")
                 .body(axum::body::Body::empty())
                 .unwrap(),
@@ -262,7 +262,7 @@ async fn test_hx_prompt() {
 
     let response = app
         .oneshot(
-            http::Request::builder()
+            axum::http::Request::builder()
                 .uri("/extract-prompt")
                 .method(Method::POST)
                 .header("HX-Prompt", "Enter your name")

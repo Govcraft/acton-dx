@@ -49,7 +49,9 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 #[cfg(feature = "cedar")]
-use crate::htmx::{auth::user::User, config::{CedarConfig, FailureMode}};
+use crate::htmx::auth::user::User;
+#[cfg(feature = "cedar")]
+use crate::htmx::config::{CedarConfig, FailureMode};
 
 #[cfg(feature = "cedar")]
 use thiserror::Error;

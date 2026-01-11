@@ -12,7 +12,7 @@
 use crate::htmx::agents::request_reply::{create_request_reply, send_response, ResponseChannel};
 use crate::htmx::agents::default_actor_config;
 use crate::htmx::auth::session::{FlashMessage, SessionData, SessionId};
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use chrono::{DateTime, Duration, Utc};
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, HashMap};

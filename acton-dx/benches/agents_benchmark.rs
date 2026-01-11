@@ -17,7 +17,7 @@ use acton_dx::htmx::agents::{
     // Hot reload
     FileChanged, HotReloadConfig, HotReloadCoordinatorAgent, HotReloadGetStats, ReloadType,
 };
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use std::path::PathBuf;
 use std::time::Duration;

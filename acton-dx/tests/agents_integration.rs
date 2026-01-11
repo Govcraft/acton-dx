@@ -15,7 +15,7 @@ use acton_dx::htmx::agents::{
     ServiceCoordinatorAgent, ServiceCoordinatorConfig, ServiceCoordinatorSubscribe, ServiceId,
     ServiceState,
 };
-use acton_reactive::prelude::*;
+use acton_service::prelude::*;
 use std::path::PathBuf;
 use std::time::Duration;
 

@@ -12,7 +12,7 @@ use acton_dx::oauth2::{
     CleanupExpired, GenerateState, OAuth2Agent, OAuthConfig, OAuthProvider, ProviderConfig,
     RemoveState, ValidateState,
 };
-use acton_reactive::prelude::{ActonApp, ActorHandleInterface};
+use acton_service::prelude::{ActonApp, ActorHandleInterface};
 
 /// Helper to create a test OAuth2 configuration
 fn test_oauth_config() -> OAuthConfig {

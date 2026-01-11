@@ -15,7 +15,7 @@
 use crate::htmx::agents::{CsrfToken, ValidateToken};
 use crate::htmx::auth::session::SessionId;
 use crate::htmx::state::ActonHtmxState;
-use acton_reactive::prelude::{ActorHandle, ActorHandleInterface};
+use acton_service::prelude::{ActorHandle, ActorHandleInterface};
 use axum::{
     body::Body,
     extract::Request,
